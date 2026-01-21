@@ -4,7 +4,6 @@ import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/core/theme/app_theme.dart';
 import 'package:app_asistencias_pauser/features/attendance/presentation/attendance_history_screen.dart';
 import 'package:app_asistencias_pauser/features/attendance/presentation/home_screen.dart';
-import 'package:app_asistencias_pauser/features/attendance/presentation/absence_screen.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/login_screen.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/profile_screen.dart';
 import 'package:flutter/material.dart';
@@ -58,13 +57,6 @@ class MyApp extends ConsumerWidget {
             GoRoute(
               path: '/home',
               builder: (context, state) => const HomeScreen(),
-            ),
-            GoRoute(
-              path: '/absence',
-              builder: (context, state) {
-                final employeeId = state.extra as String;
-                return AbsenceScreen(employeeId: employeeId);
-              },
             ),
             GoRoute(
               path: '/history',

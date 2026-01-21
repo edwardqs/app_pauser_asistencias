@@ -39,13 +39,16 @@ class StorageService {
     await _prefs.setString(keyDni, dni);
 
     if (sede != null) await _prefs.setString(keySede, sede);
-    if (businessUnit != null)
+    if (businessUnit != null) {
       await _prefs.setString(keyBusinessUnit, businessUnit);
-    if (employeeType != null)
+    }
+    if (employeeType != null) {
       await _prefs.setString(keyEmployeeType, employeeType);
+    }
     if (position != null) await _prefs.setString(keyPosition, position);
-    if (profilePicture != null)
+    if (profilePicture != null) {
       await _prefs.setString(keyProfilePicture, profilePicture);
+    }
   }
 
   Future<void> updateProfilePicture(String url) async {
@@ -62,12 +65,10 @@ class StorageService {
   String? get sede => _prefs.getString(keySede);
   String? get businessUnit => _prefs.getString(keyBusinessUnit);
   String? get employeeType => _prefs.getString(keyEmployeeType);
-  String? get position => _prefs.getString(keyPosition);
-  String? get profilePicture => _prefs.getString(keyProfilePicture);
-
-  // Aliases for compatibility
   String? get role => employeeType;
   String? get userName => fullName;
+  String? get position => _prefs.getString(keyPosition);
+  String? get profilePicture => _prefs.getString(keyProfilePicture);
 
   bool get isAuthenticated => employeeId != null;
 }

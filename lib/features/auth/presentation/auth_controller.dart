@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:app_asistencias_pauser/features/attendance/presentation/home_screen.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/auth/data/auth_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,13 +23,26 @@ class AuthController extends AsyncNotifier<void> {
 
       final success = response['success'] == true;
       if (success) {
+        final employeeType = response['employee_type'] as String?;
+        final position = response['position'] as String?;
+        final userRole = response['role'] as String?; // Nuevo campo de DB
+
+        // Validación de Rol: Analista de Gente solo Web
+        if (position?.toLowerCase().trim() == 'analista de gente' ||
+            employeeType?.toLowerCase().trim() == 'analista de gente' ||
+            userRole?.toLowerCase().trim() == 'analista_gente') {
+          state = AsyncValue.error(
+            'Este usuario solo tiene acceso a la plataforma Web',
+            StackTrace.current,
+          );
+          return false;
+        }
+
         final employeeId = response['employee_id'] as String;
         final fullName = response['full_name'] as String;
         final dni = response['dni'] as String;
         final sede = response['sede'] as String?;
         final businessUnit = response['business_unit'] as String?;
-        final employeeType = response['employee_type'] as String?;
-        final position = response['position'] as String?;
         final profilePicture = response['profile_picture_url'] as String?;
 
         // Save to Storage
@@ -39,7 +53,9 @@ class AuthController extends AsyncNotifier<void> {
           dni: dni,
           sede: sede,
           businessUnit: businessUnit,
-          employeeType: employeeType,
+          // Guardamos 'role' en employeeType para compatibilidad o creamos nuevo campo
+          // Usaremos 'role' de la DB como prioridad, si no existe usamos employee_type
+          employeeType: userRole ?? employeeType,
           position: position,
           profilePicture: profilePicture,
         );
@@ -60,6 +76,12 @@ class AuthController extends AsyncNotifier<void> {
   Future<void> signOut() async {
     state = const AsyncValue.loading();
     final storage = ref.read(storageServiceProvider);
+
+    // Invalidate all providers that might hold user-specific state
+    // This is crucial to prevent "phantom" data when switching users
+    ref.invalidate(attendanceDataProvider);
+    // Add other providers here if necessary (e.g. teamAttendanceProvider)
+
     await storage.clearSession();
     state = const AsyncValue.data(null);
   }

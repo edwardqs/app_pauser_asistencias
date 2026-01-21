@@ -13,27 +13,25 @@ class ProfileRepository {
 
   Future<String> uploadProfilePicture(String employeeId, File imageFile) async {
     final fileExt = imageFile.path.split('.').last;
-    final fileName =
-        'profiles/$employeeId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-
-    // Upload file
-    await _supabase.storage
-        .from('profiles')
-        .upload(
+    final fileName = '$employeeId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+    
+    // Upload image to 'profiles' bucket
+    await _supabase.storage.from('profiles').upload(
           fileName,
           imageFile,
           fileOptions: const FileOptions(upsert: true),
         );
 
-    // Get public URL
     final imageUrl = _supabase.storage.from('profiles').getPublicUrl(fileName);
-
-    // Update user profile in database
-    await _supabase
-        .from('employees')
-        .update({'profile_picture': imageUrl})
-        .eq('id', employeeId);
-
+    
+    // Update user profile in database using RPC
+    // Assuming there is an RPC for this, or we can update the employees table directly if RLS allows
+    // Based on file list SUPABASE_UPDATE_PROFILE_RPC.sql exists
+    await _supabase.rpc('update_profile_picture', params: {
+      'p_employee_id': employeeId,
+      'p_image_url': imageUrl,
+    });
+    
     return imageUrl;
   }
 }

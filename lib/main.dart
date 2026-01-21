@@ -7,6 +7,7 @@ import 'package:app_asistencias_pauser/features/attendance/presentation/home_scr
 import 'package:app_asistencias_pauser/features/auth/presentation/login_screen.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/profile_screen.dart';
 import 'package:app_asistencias_pauser/features/team/presentation/manual_attendance_screen.dart';
+import 'package:app_asistencias_pauser/features/team/presentation/team_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -66,6 +67,10 @@ class MyApp extends ConsumerWidget {
             GoRoute(
               path: '/profile',
               builder: (context, state) => const ProfileScreen(),
+            ),
+            GoRoute(
+              path: '/team',
+              builder: (context, state) => const TeamScreen(),
             ),
             GoRoute(
               path: '/manual-attendance',

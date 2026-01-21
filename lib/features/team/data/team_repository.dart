@@ -65,6 +65,8 @@ class TeamRepository {
     DateTime? checkOut,
     required String recordType,
     String? notes,
+    String? evidenceUrl,
+    bool isLate = false, // Nuevo parámetro opcional
   }) async {
     try {
       final response = await _supabase.rpc(
@@ -74,9 +76,11 @@ class TeamRepository {
           'p_supervisor_id': supervisorId,
           'p_work_date': workDate.toIso8601String().split('T')[0],
           'p_check_in': checkIn.toIso8601String(),
-          'p_check_out': checkOut?.toIso8601String(),
+          // 'p_check_out': checkOut?.toIso8601String(), // Eliminado
           'p_record_type': recordType,
           'p_notes': notes,
+          'p_evidence_url': evidenceUrl,
+          'p_is_late': isLate, // Enviar flag explícito
         },
       );
 

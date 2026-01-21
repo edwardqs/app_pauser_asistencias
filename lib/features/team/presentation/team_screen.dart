@@ -1,5 +1,7 @@
+import 'dart:io' as io; // Alias para evitar conflicto
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/team/data/team_repository.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -88,15 +90,19 @@ class TeamScreen extends ConsumerWidget {
 
           // Resumen de contadores (Globales, sin filtrar)
           final total = team.length;
-          final presentes = team
-              .where((e) => e['check_in'] != null && e['check_out'] == null)
-              .length;
+
+          // Presentes: Tienen check_in (incluye puntuales y tardanzas)
+          final presentes = team.where((e) => e['check_in'] != null).length;
+
+          // Pendientes: No tienen check_in Y no son inasistencia
           final pendientes = team
               .where(
                 (e) =>
                     e['check_in'] == null && e['record_type'] != 'INASISTENCIA',
               )
               .length;
+
+          // Ausentes: Son inasistencia explícita
           final ausentes = team
               .where((e) => e['record_type'] == 'INASISTENCIA')
               .length;
@@ -211,6 +217,7 @@ class TeamScreen extends ConsumerWidget {
     final isLate = member['is_late'] == true;
     final notes = member['notes'];
     final recordType = member['record_type'];
+    final employeeId = member['employee_id'];
 
     Color statusColor;
     String statusText;
@@ -222,163 +229,563 @@ class TeamScreen extends ConsumerWidget {
       statusColor = Colors.grey;
       statusText = 'Salida';
     } else if (checkIn != null) {
-      statusColor = Colors.green;
-      statusText = 'En Jornada';
+      if (isLate) {
+        statusColor = Colors.orange.shade800; // Color distintivo para tardanza
+        statusText = 'Tardanza';
+      } else {
+        statusColor = Colors.green;
+        statusText =
+            'Puntual'; // 'En Jornada' -> 'Puntual' es más claro si hay distinción
+      }
     } else {
       statusColor = Colors.orange;
       statusText = 'Pendiente';
     }
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
+    return GestureDetector(
+      onLongPress: () {
+        // Habilitar registro manual al mantener presionado (solo para admins/supervisores)
+        _showManualRegisterModal(context, employeeId, fullName);
+      },
+      child: Card(
+        elevation: 2,
+        margin: const EdgeInsets.only(bottom: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.grey.shade200,
+                    backgroundImage: profilePic != null
+                        ? NetworkImage(profilePic)
+                        : null,
+                    child: profilePic == null
+                        ? Icon(Icons.person, color: Colors.grey.shade400)
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          fullName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          position,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Botón de acción rápida (Menú de 3 puntos)
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'manual_register') {
+                        _showManualRegisterModal(context, employeeId, fullName);
+                      }
+                    },
+                    itemBuilder: (BuildContext context) =>
+                        <PopupMenuEntry<String>>[
+                          const PopupMenuItem<String>(
+                            value: 'manual_register',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.edit_calendar,
+                                  size: 18,
+                                  color: Colors.blue,
+                                ),
+                                SizedBox(width: 8),
+                                Text('Registrar Manualmente'),
+                              ],
+                            ),
+                          ),
+                        ],
+                    icon: const Icon(Icons.more_vert, color: Colors.grey),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: statusColor.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // ... resto de la tarjeta (check-in/check-out info)
+              if (checkIn != null ||
+                  notes != null ||
+                  recordType == 'INASISTENCIA') ...[
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (checkIn != null)
+                      Row(
+                        children: [
+                          const Icon(Icons.login, size: 16, color: Colors.grey),
+                          const SizedBox(width: 4),
+                          Text(
+                            DateFormat(
+                              'hh:mm a',
+                            ).format(DateTime.parse(checkIn).toLocal()),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                          if (isLate)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'TARDE',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    if (checkOut != null)
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.logout,
+                            size: 16,
+                            color: Colors.grey,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            DateFormat(
+                              'hh:mm a',
+                            ).format(DateTime.parse(checkOut).toLocal()),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+                if (notes != null && notes.toString().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.note, size: 16, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            notes,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade700,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showManualRegisterModal(
+    BuildContext context,
+    String? employeeId,
+    String fullName,
+  ) {
+    if (employeeId == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) =>
+          _ManualRegisterSheet(employeeId: employeeId, fullName: fullName),
+    );
+  }
+}
+
+class _ManualRegisterSheet extends ConsumerStatefulWidget {
+  final String employeeId;
+  final String fullName;
+
+  const _ManualRegisterSheet({
+    required this.employeeId,
+    required this.fullName,
+  });
+
+  @override
+  ConsumerState<_ManualRegisterSheet> createState() =>
+      _ManualRegisterSheetState();
+}
+
+class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
+  final _formKey = GlobalKey<FormState>();
+  DateTime _selectedDate = DateTime.now();
+  TimeOfDay _selectedTime = TimeOfDay.now(); // Hora actual por defecto
+  String _selectedType = 'IN'; // IN, ABSENCE
+  final _notesController = TextEditingController();
+  bool _isLoading = false;
+  io.File? _evidenceFile; // Uso de alias para el tipo de variable
+  String? _evidenceFileName;
+
+  // Límite de tardanza (07:00 AM)
+  static const _lateLimitHour = 7;
+  static const _lateLimitMinute = 0;
+
+  bool get _isLate {
+    if (_selectedType == 'ABSENCE') return true;
+    if (_selectedType == 'IN') {
+      if (_selectedTime.hour > _lateLimitHour) return true;
+      if (_selectedTime.hour == _lateLimitHour &&
+          _selectedTime.minute > _lateLimitMinute) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _pickEvidence() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+    );
+
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        _evidenceFile = io.File(
+          result.files.single.path!,
+        ); // Uso de alias correcto
+        _evidenceFileName = result.files.single.name;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        left: 20,
+        right: 20,
+        top: 20,
+      ),
+      child: Form(
+        key: _formKey,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              'Registro Manual: ${widget.fullName}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+
+            // Fecha y Hora
             Row(
               children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.grey.shade200,
-                  backgroundImage: profilePic != null
-                      ? NetworkImage(profilePic)
-                      : null,
-                  child: profilePic == null
-                      ? Icon(Icons.person, color: Colors.grey.shade400)
-                      : null,
+                Expanded(
+                  child: InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        setState(() => _selectedDate = picked);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Fecha',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.calendar_today),
+                      ),
+                      child: Text(
+                        DateFormat('dd/MM/yyyy').format(_selectedDate),
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        fullName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                  child: InkWell(
+                    onTap: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: _selectedTime,
+                      );
+                      if (picked != null) {
+                        setState(() => _selectedTime = picked);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Hora',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.access_time),
                       ),
-                      Text(
-                        position,
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
+                      child: Text(
+                        DateFormat('hh:mm a').format(
+                          DateTime(
+                            2022,
+                            1,
+                            1,
+                            _selectedTime.hour,
+                            _selectedTime.minute,
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: statusColor.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Text(
-                    statusText,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               ],
             ),
-            if (checkIn != null ||
-                notes != null ||
-                recordType == 'INASISTENCIA') ...[
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (checkIn != null)
+            const SizedBox(height: 16),
+
+            // Tipo de Registro (SIN SALIDA)
+            DropdownButtonFormField<String>(
+              value: _selectedType,
+              decoration: const InputDecoration(
+                labelText: 'Tipo de Registro',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'IN',
+                  child: Text('Entrada (Check-in)'),
+                ),
+                DropdownMenuItem(value: 'ABSENCE', child: Text('Inasistencia')),
+              ],
+              onChanged: (val) => setState(() => _selectedType = val!),
+            ),
+            const SizedBox(height: 16),
+
+            // Notas
+            TextFormField(
+              controller: _notesController,
+              decoration: const InputDecoration(
+                labelText: 'Motivo / Observación',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+              validator: (val) {
+                if (_isLate && (val == null || val.isEmpty)) {
+                  return 'Requerido para tardanza/inasistencia';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Evidencia (Obligatoria si es Tarde o Inasistencia)
+            if (_isLate) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Row(
                       children: [
-                        const Icon(Icons.login, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          DateFormat(
-                            'HH:mm',
-                          ).format(DateTime.parse(checkIn).toLocal()),
-                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.orange.shade800,
                         ),
-                        if (isLate)
-                          Container(
-                            margin: const EdgeInsets.only(left: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade50,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'TARDE',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                              ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _selectedType == 'ABSENCE'
+                                ? 'Inasistencia requiere evidencia'
+                                : 'Tardanza detectada (>07:00). Requiere evidencia.',
+                            style: TextStyle(
+                              color: Colors.orange.shade900,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
                             ),
                           ),
-                      ],
-                    ),
-                  if (checkOut != null)
-                    Row(
-                      children: [
-                        const Icon(Icons.logout, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          DateFormat(
-                            'HH:mm',
-                          ).format(DateTime.parse(checkOut).toLocal()),
-                          style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
-                ],
-              ),
-              if (notes != null && notes.toString().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.note, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Expanded(
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _pickEvidence,
+                      icon: const Icon(Icons.attach_file),
+                      label: Text(
+                        _evidenceFileName ?? 'Adjuntar Evidencia (PDF/IMG)',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.orange.shade800,
+                        elevation: 0,
+                        side: BorderSide(color: Colors.orange.shade300),
+                      ),
+                    ),
+                    if (_evidenceFile == null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
                         child: Text(
-                          notes,
+                          '* Obligatorio',
                           style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                            fontStyle: FontStyle.italic,
+                            color: Colors.red.shade700,
+                            fontSize: 11,
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
+              ),
+              const SizedBox(height: 24),
             ],
+
+            // Botón Guardar
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(color: Colors.white),
+                      )
+                    : const Text('GUARDAR REGISTRO'),
+              ),
+            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    // Validar Evidencia
+    if (_isLate && _evidenceFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debe adjuntar evidencia para este registro'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final storage = ref.read(storageServiceProvider);
+      final supervisorId = storage.employeeId;
+
+      if (supervisorId == null) {
+        throw Exception('No se encontró ID de supervisor');
+      }
+
+      // Subir evidencia si existe
+      String? evidenceUrl;
+      if (_evidenceFile != null) {
+        evidenceUrl = await storage.uploadEvidence(_evidenceFile!);
+      }
+
+      // Construir fechas
+      final datePart = DateFormat('yyyy-MM-dd').format(_selectedDate);
+      final timePart =
+          '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}:00';
+      final fullDateTime = DateTime.parse('${datePart}T$timePart');
+
+      await ref
+          .read(teamRepositoryProvider)
+          .registerManualAttendance(
+            employeeId: widget.employeeId,
+            supervisorId: supervisorId,
+            workDate: _selectedDate,
+            checkIn: fullDateTime,
+            // checkOut eliminado
+            recordType: _selectedType == 'ABSENCE'
+                ? 'ABSENCE'
+                : 'IN', // Backend maneja 'IN' -> 'ASISTENCIA'
+            notes: _notesController.text,
+            evidenceUrl: evidenceUrl,
+            isLate: _isLate, // Pasar explícitamente si es tardanza
+          );
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Registro guardado correctamente')),
+        );
+        // Forzar actualización completa del provider
+        ref.invalidate(teamAttendanceProvider);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 }
 

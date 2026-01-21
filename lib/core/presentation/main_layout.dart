@@ -66,7 +66,7 @@ class MainLayout extends ConsumerWidget {
     if (location.startsWith('/home')) return 0;
     
     if (hasTeamAccess) {
-      if (location.startsWith('/team')) return 1;
+      if (location.startsWith('/manual-attendance')) return 1;
       if (location.startsWith('/history')) return 2;
       if (location.startsWith('/profile')) return 3;
     } else {
@@ -84,6 +84,8 @@ class MainLayout extends ConsumerWidget {
           context.go('/home');
           break;
         case 1:
+          // Redirige a la pantalla principal de EQUIPO (Lista + Filtros)
+          // La funcionalidad manual ahora es un modal dentro de esa pantalla.
           context.go('/team');
           break;
         case 2:

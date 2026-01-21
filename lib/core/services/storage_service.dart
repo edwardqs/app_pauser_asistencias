@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final storageServiceProvider = Provider<StorageService>((ref) {
   throw UnimplementedError('StorageService must be initialized');
@@ -16,12 +18,38 @@ class StorageService {
   static const String keyProfilePicture = 'profile_picture';
 
   final SharedPreferences _prefs;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   StorageService(this._prefs);
 
   static Future<StorageService> init() async {
     final prefs = await SharedPreferences.getInstance();
     return StorageService(prefs);
+  }
+
+  /// Uploads an evidence file to the 'attendance_evidence' bucket.
+  /// Returns the public URL of the uploaded file.
+  Future<String> uploadEvidence(File file) async {
+    try {
+      final fileName =
+          'evidence_${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
+      final path = 'manual_uploads/$fileName';
+
+      await _supabase.storage
+          .from('attendance_evidence')
+          .upload(
+            path,
+            file,
+            fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+          );
+
+      final publicUrl = _supabase.storage
+          .from('attendance_evidence')
+          .getPublicUrl(path);
+      return publicUrl;
+    } catch (e) {
+      throw Exception('Error subiendo evidencia: $e');
+    }
   }
 
   Future<void> saveUserSession({

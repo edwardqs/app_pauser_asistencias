@@ -56,12 +56,15 @@ class _ManualAttendanceScreenState
       // Extraer empleados únicos
       final uniqueEmployees = <String, Map<String, dynamic>>{};
       for (var member in team) {
+        // Validación de nulidad: asegurarse que employee_id no sea nulo
+        if (member['employee_id'] == null) continue;
+        
         final empId = member['employee_id'] as String;
         if (!uniqueEmployees.containsKey(empId)) {
           uniqueEmployees[empId] = {
             'employee_id': empId,
-            'full_name': member['full_name'],
-            'position': member['position'],
+            'full_name': member['full_name'] ?? 'Sin Nombre', // Valor por defecto
+            'position': member['position'] ?? 'Sin Cargo', // Valor por defecto
           };
         }
       }

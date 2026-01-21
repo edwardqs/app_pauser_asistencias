@@ -28,14 +28,19 @@ class AttendanceRepository {
   }
 
   Future<List<Map<String, dynamic>>> getAttendanceHistory(
-    String employeeId,
-  ) async {
+    String employeeId, {
+    int page = 0,
+    int pageSize = 20,
+  }) async {
+    final start = page * pageSize;
+    final end = start + pageSize - 1;
+
     final response = await _supabase
         .from('attendance')
         .select()
         .eq('employee_id', employeeId)
         .order('created_at', ascending: false)
-        .limit(30);
+        .range(start, end);
 
     return List<Map<String, dynamic>>.from(response);
   }
@@ -89,6 +94,8 @@ class AttendanceRepository {
   Future<void> reportAbsence({
     required String employeeId,
     required String reason,
+    required double lat,
+    required double lng,
     File? evidenceFile,
   }) async {
     String? evidenceUrl;
@@ -113,13 +120,12 @@ class AttendanceRepository {
     }
 
     // 2. Call RPC to register absence
-    // We send dummy lat/lng because the RPC expects them, but for absence they might be irrelevant or 0.0
     final response = await _supabase.rpc(
       'register_attendance',
       params: {
         'p_employee_id': employeeId,
-        'p_lat': 0.0,
-        'p_lng': 0.0,
+        'p_lat': lat,
+        'p_lng': lng,
         'p_type': 'ABSENCE',
         'p_notes': reason,
         'p_evidence_url': evidenceUrl,

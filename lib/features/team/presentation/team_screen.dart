@@ -4,6 +4,7 @@ import 'package:app_asistencias_pauser/features/team/data/team_repository.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
 final teamAttendanceProvider =
@@ -67,7 +68,9 @@ class TeamScreen extends ConsumerWidget {
           // Lógica de filtrado
           final filteredTeam = team.where((member) {
             final isLate = member['is_late'] == true;
-            final isAbsent = member['record_type'] == 'INASISTENCIA';
+            final isAbsent =
+                member['record_type'] == 'INASISTENCIA' ||
+                member['record_type'] == 'AUSENCIA';
             final hasCheckIn = member['check_in'] != null;
 
             // Puntual: Tiene check-in y NO es tarde
@@ -98,13 +101,19 @@ class TeamScreen extends ConsumerWidget {
           final pendientes = team
               .where(
                 (e) =>
-                    e['check_in'] == null && e['record_type'] != 'INASISTENCIA',
+                    e['check_in'] == null &&
+                    e['record_type'] != 'INASISTENCIA' &&
+                    e['record_type'] != 'AUSENCIA',
               )
               .length;
 
           // Ausentes: Son inasistencia explícita
           final ausentes = team
-              .where((e) => e['record_type'] == 'INASISTENCIA')
+              .where(
+                (e) =>
+                    e['record_type'] == 'INASISTENCIA' ||
+                    e['record_type'] == 'AUSENCIA',
+              )
               .length;
 
           return Column(
@@ -222,7 +231,7 @@ class TeamScreen extends ConsumerWidget {
     Color statusColor;
     String statusText;
 
-    if (recordType == 'INASISTENCIA') {
+    if (recordType == 'INASISTENCIA' || recordType == 'AUSENCIA') {
       statusColor = Colors.red;
       statusText = 'Ausente';
     } else if (checkOut != null) {
@@ -344,7 +353,8 @@ class TeamScreen extends ConsumerWidget {
               // ... resto de la tarjeta (check-in/check-out info)
               if (checkIn != null ||
                   notes != null ||
-                  recordType == 'INASISTENCIA') ...[
+                  recordType == 'INASISTENCIA' ||
+                  recordType == 'AUSENCIA') ...[
                 const SizedBox(height: 12),
                 const Divider(),
                 const SizedBox(height: 8),
@@ -717,6 +727,30 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
     );
   }
 
+  Future<Position?> _getCurrentLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return null;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return null;
+    }
+
+    return await Geolocator.getCurrentPosition();
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -739,6 +773,18 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
 
       if (supervisorId == null) {
         throw Exception('No se encontró ID de supervisor');
+      }
+
+      // Obtener ubicación
+      final position = await _getCurrentLocation();
+      Map<String, dynamic>? locationData;
+      if (position != null) {
+        locationData = {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'accuracy': position.accuracy,
+          'timestamp': position.timestamp.toIso8601String(),
+        };
       }
 
       // Subir evidencia si existe
@@ -767,6 +813,7 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
             notes: _notesController.text,
             evidenceUrl: evidenceUrl,
             isLate: _isLate, // Pasar explícitamente si es tardanza
+            location: locationData,
           );
 
       if (mounted) {

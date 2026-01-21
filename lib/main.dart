@@ -1,3 +1,4 @@
+import 'package:app_asistencias_pauser/core/services/auth_notifier.dart';
 import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:app_asistencias_pauser/core/presentation/main_layout.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
@@ -40,12 +41,15 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Check session on startup to redirect
-    final storage = ref.watch(storageServiceProvider);
+    // Escuchar el estado de autenticación para redirecciones
+    final authState = ref.watch(authNotifierProvider);
 
-    // Create a router that knows about auth state
+    // Configurar GoRouter con refreshListenable para reaccionar a cambios
+    // NOTA: Como usamos Riverpod, podemos reconstruir el router si cambia el authState
+    // O usar un enfoque más estático si no queremos reconstruir todo el árbol.
+    // Aquí simplificamos reconstruyendo el router, lo cual es aceptable para cambios de auth.
     final router = GoRouter(
-      initialLocation: storage.isAuthenticated ? '/home' : '/login',
+      initialLocation: authState.isAuthenticated ? '/home' : '/login',
       routes: [
         GoRoute(
           path: '/login',
@@ -79,6 +83,20 @@ class MyApp extends ConsumerWidget {
           ],
         ),
       ],
+      redirect: (context, state) {
+        final isLoggedIn = authState.isAuthenticated;
+        final isLoginRoute = state.uri.path == '/login';
+
+        if (!isLoggedIn && !isLoginRoute) {
+          return '/login';
+        }
+
+        if (isLoggedIn && isLoginRoute) {
+          return '/home';
+        }
+
+        return null;
+      },
     );
 
     return MaterialApp.router(

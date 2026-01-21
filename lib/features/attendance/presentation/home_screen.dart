@@ -39,6 +39,31 @@ class AttendanceLogic {
   AttendanceLogic(this.ref);
 
   Future<void> reportAbsence(BuildContext context, String employeeId) async {
+    // 0. Check permissions & Get Location (Obligatorio ahora)
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Permisos de ubicación denegados')),
+          );
+        }
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Permisos de ubicación denegados permanentemente'),
+          ),
+        );
+      }
+      return;
+    }
+
     // 1. Mostrar diálogo de justificación
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -60,12 +85,17 @@ class AttendanceLogic {
     if (context.mounted) {
       ref.read(actionLoadingNotifierProvider).value = true;
       try {
+        // Obtener ubicación actual
+        final position = await Geolocator.getCurrentPosition();
+
         await ref
             .read(attendanceRepositoryProvider)
             .reportAbsence(
               employeeId: employeeId,
               reason: reason,
               evidenceFile: evidenceFile,
+              lat: position.latitude,
+              lng: position.longitude,
             );
 
         if (context.mounted) {
@@ -123,11 +153,21 @@ class AttendanceLogic {
       final position = await Geolocator.getCurrentPosition();
 
       // Refresh data local to be sure logic is correct
-      final currentAttendance = await ref
+      final lastAttendance = await ref
           .read(attendanceRepositoryProvider)
           .getTodayAttendance(employeeId);
+
+      // VALIDACIÓN DE FECHA: Asegurar que el registro sea de HOY
+      final now = DateTime.now();
+      final todayStr = DateFormat('yyyy-MM-dd').format(now);
+      final recordDate = lastAttendance?['work_date'] as String?;
+      final isRecordFromToday = recordDate == todayStr;
+
+      // Solo consideramos check-in activo si es de hoy y no tiene salida
       final isCheckedIn =
-          currentAttendance != null && currentAttendance['check_out'] == null;
+          isRecordFromToday &&
+          lastAttendance != null &&
+          lastAttendance['check_out'] == null;
 
       if (isCheckedIn) {
         // YA NO HACEMOS CHECK OUT.
@@ -257,24 +297,36 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       body: attendanceAsync.when(
         data: (attendance) {
-          final isCheckedIn =
-              attendance != null && attendance['check_out'] == null;
+          // Lógica de Horario Estricto
+          final now = DateTime.now();
+          final todayStr = DateFormat('yyyy-MM-dd').format(now);
 
-          final lastCheckIn = attendance != null
-              ? attendance['check_in']
+          // Validar si el registro recuperado es de hoy
+          final recordDate = attendance?['work_date'] as String?;
+          final isRecordFromToday = recordDate == todayStr;
+
+          // Filtrar asistencia efectiva (si no es de hoy, es como si no hubiera registro hoy)
+          final effectiveAttendance = isRecordFromToday ? attendance : null;
+
+          final isCheckedIn =
+              effectiveAttendance != null &&
+              effectiveAttendance['check_out'] == null;
+
+          final lastCheckIn = effectiveAttendance != null
+              ? effectiveAttendance['check_in']
               : null;
 
           // Si ya marcó salida hoy O si es una INASISTENCIA registrada
           final isDayComplete =
-              attendance != null &&
-              (attendance['check_out'] != null ||
-                  attendance['record_type'] == 'INASISTENCIA');
+              effectiveAttendance != null &&
+              (effectiveAttendance['check_out'] != null ||
+                  effectiveAttendance['record_type'] == 'INASISTENCIA' ||
+                  effectiveAttendance['record_type'] == 'AUSENCIA');
 
           final isAbsence =
-              attendance != null && attendance['record_type'] == 'INASISTENCIA';
-
-          // Lógica de Horario Estricto
-          final now = DateTime.now();
+              effectiveAttendance != null &&
+              (effectiveAttendance['record_type'] == 'INASISTENCIA' ||
+                  effectiveAttendance['record_type'] == 'AUSENCIA');
 
           // Hora límite para TARDANZA: 07:00 (7 AM)
           final tardanzaLimit = DateTime(now.year, now.month, now.day, 7, 0);

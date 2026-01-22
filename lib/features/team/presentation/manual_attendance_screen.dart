@@ -238,6 +238,7 @@ class _ManualAttendanceScreenState
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       value: _selectedEmployeeId,
                       decoration: InputDecoration(
                         hintText: 'Seleccione un empleado',
@@ -246,7 +247,7 @@ class _ManualAttendanceScreenState
                         ),
                         prefixIcon: const Icon(Icons.person),
                       ),
-                      items: _teamMembers.map<DropdownMenuItem<String>>((
+                      items: _teamMembers.map<DropdownMenuItem<String>>(( 
                         member,
                       ) {
                         return DropdownMenuItem<String>(

@@ -244,9 +244,12 @@ class AttendanceLogic {
             );
 
         if (context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Registro completado')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('¡Entrada registrada exitosamente!'),
+              backgroundColor: Colors.green,
+            ),
+          );
         }
       }
 

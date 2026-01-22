@@ -40,7 +40,7 @@ BEGIN
             'id', v_employee.id,
             'full_name', v_employee.full_name,
             'dni', v_employee.dni,
-            'role', v_employee.role,
+            'role', COALESCE(v_employee.role, v_employee.employee_type), -- Fallback si role es nulo
             'position', v_employee.position,
             'sede', v_employee.sede,
             'business_unit', v_employee.business_unit,

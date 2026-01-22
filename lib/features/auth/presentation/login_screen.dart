@@ -17,8 +17,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _dniController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
-  bool _isDniFocused = false;
-  bool _isPasswordFocused = false;
 
   @override
   void dispose() {
@@ -67,233 +65,220 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final isLoading = authState.isLoading;
 
     return Scaffold(
+      backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Background Image with Parallax-like scaling/overlay
-          Positioned.fill(
-            child:
-                Image.asset(
-                      'assets/images/imagen_pauser.jpg',
-                      fit: BoxFit.cover,
-                    )
-                    .animate()
-                    .fadeIn(duration: 800.ms)
-                    .scale(
-                      begin: const Offset(1.05, 1.05),
-                      end: const Offset(1.0, 1.0),
-                      duration: 2.seconds,
-                      curve: Curves.easeOut,
-                    ),
-          ),
-          // Gradient Overlay
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.3),
-                    Colors.black.withValues(alpha: 0.7),
-                  ],
+          // 1. Fondo Superior (Imagen)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: MediaQuery.of(context).size.height * 0.45, // Ocupa el 45% superior
+            child: Stack(
+              children: [
+                // Imagen
+                Positioned.fill(
+                  child: Image.asset(
+                    'assets/images/imagen_pauser.jpg',
+                    fit: BoxFit.cover,
+                  ).animate().fadeIn(duration: 1000.ms),
                 ),
-              ),
+                // Gradiente oscuro para mejorar contraste
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.6),
+                          Colors.black.withValues(alpha: 0.8),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Texto de Bienvenida sobre la imagen
+                Positioned(
+                  bottom: 60,
+                  left: 24,
+                  right: 24,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Bienvenido a',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ).animate().slideX(begin: -0.2, end: 0, duration: 600.ms),
+                      const SizedBox(height: 4),
+                      Text(
+                        'PAUSER RRHH',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
+                        ),
+                      ).animate().slideX(begin: -0.2, end: 0, delay: 100.ms, duration: 600.ms),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          // Login Form
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Card(
-                elevation: 8,
-                color: Colors.white.withValues(alpha: 0.95),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
+
+          // 2. Contenedor Inferior (Formulario) con bordes redondeados
+          Positioned(
+            top: MediaQuery.of(context).size.height * 0.4 - 20, // Se superpone un poco
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(30),
+                  topRight: Radius.circular(30),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Logo or Title
-                        Text(
-                              'Bienvenido',
-                              style: Theme.of(context).textTheme.headlineMedium
-                                  ?.copyWith(
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 20,
+                    offset: Offset(0, -5),
+                  ),
+                ],
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 10),
+                      Text(
+                        'Iniciar Sesión',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade900,
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Accede para registrar tus asistencias',
+                        style: TextStyle(color: Colors.grey.shade500),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 40),
+
+                      // DNI Field
+                      TextFormField(
+                        controller: _dniController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(8),
+                        ],
+                        decoration: InputDecoration(
+                          labelText: 'DNI',
+                          hintText: '8 dígitos',
+                          prefixIcon: const Icon(Icons.badge_outlined),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.grey.shade200),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.grey.shade200),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) return 'Requerido';
+                          if (value.length != 8) return 'DNI inválido';
+                          return null;
+                        },
+                      ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.2, end: 0),
+                      
+                      const SizedBox(height: 20),
+
+                      // Password Field
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: !_isPasswordVisible,
+                        decoration: InputDecoration(
+                          labelText: 'Contraseña',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _isPasswordVisible
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                            onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.grey.shade200),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.grey.shade200),
+                          ),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                        ),
+                        validator: (value) => value == null || value.isEmpty ? 'Requerido' : null,
+                      ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.2, end: 0),
+
+                      const SizedBox(height: 40),
+
+                      // Login Button
+                      SizedBox(
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: isLoading ? null : _handleLogin,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2563EB), // Azul corporativo
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 5,
+                            shadowColor: Colors.blue.withValues(alpha: 0.3),
+                          ),
+                          child: isLoading
+                              ? const SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                )
+                              : const Text(
+                                  'INGRESAR',
+                                  style: TextStyle(
+                                    fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF1E293B),
+                                    letterSpacing: 1.2,
                                   ),
-                              textAlign: TextAlign.center,
-                            )
-                            .animate()
-                            .slideY(
-                              begin: -0.2,
-                              end: 0,
-                              duration: 600.ms,
-                              curve: Curves.easeOut,
-                            )
-                            .fadeIn(),
-                        const SizedBox(height: 8),
-                        Text(
-                              'Ingresa tus credenciales',
-                              style: Theme.of(context).textTheme.bodyLarge
-                                  ?.copyWith(color: Colors.grey[600]),
-                              textAlign: TextAlign.center,
-                            )
-                            .animate()
-                            .slideY(
-                              begin: -0.2,
-                              end: 0,
-                              duration: 600.ms,
-                              delay: 100.ms,
-                              curve: Curves.easeOut,
-                            )
-                            .fadeIn(),
-                        const SizedBox(height: 32),
-
-                        // DNI Field
-                        Focus(
-                              onFocusChange: (hasFocus) =>
-                                  setState(() => _isDniFocused = hasFocus),
-                              child: TextFormField(
-                                controller: _dniController,
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                  LengthLimitingTextInputFormatter(8),
-                                ],
-                                decoration: InputDecoration(
-                                  labelText: 'DNI',
-                                  hintText: 'Ingrese su DNI (8 dígitos)',
-                                  prefixIcon: Icon(
-                                    Icons.person_outline,
-                                    color: _isDniFocused
-                                        ? Theme.of(context).primaryColor
-                                        : Colors.grey,
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.grey[50],
                                 ),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Por favor ingrese su DNI';
-                                  }
-                                  if (value.length != 8) {
-                                    return 'El DNI debe tener 8 dígitos';
-                                  }
-                                  return null;
-                                },
-                              ),
-                            )
-                            .animate()
-                            .slideX(
-                              begin: -0.1,
-                              end: 0,
-                              duration: 600.ms,
-                              delay: 200.ms,
-                            )
-                            .fadeIn(),
-                        const SizedBox(height: 20),
-
-                        // Password Field
-                        Focus(
-                              onFocusChange: (hasFocus) =>
-                                  setState(() => _isPasswordFocused = hasFocus),
-                              child: TextFormField(
-                                controller: _passwordController,
-                                obscureText: !_isPasswordVisible,
-                                decoration: InputDecoration(
-                                  labelText: 'Contraseña',
-                                  prefixIcon: Icon(
-                                    Icons.lock_outline,
-                                    color: _isPasswordFocused
-                                        ? Theme.of(context).primaryColor
-                                        : Colors.grey,
-                                  ),
-                                  suffixIcon: IconButton(
-                                    icon: Icon(
-                                      _isPasswordVisible
-                                          ? Icons.visibility_outlined
-                                          : Icons.visibility_off_outlined,
-                                      color: Colors.grey,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _isPasswordVisible =
-                                            !_isPasswordVisible;
-                                      });
-                                    },
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.grey[50],
-                                ),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Por favor ingrese su contraseña';
-                                  }
-                                  return null;
-                                },
-                              ),
-                            )
-                            .animate()
-                            .slideX(
-                              begin: -0.1,
-                              end: 0,
-                              duration: 600.ms,
-                              delay: 300.ms,
-                            )
-                            .fadeIn(),
-                        const SizedBox(height: 32),
-
-                        // Login Button
-                        SizedBox(
-                              height: 56,
-                              child: ElevatedButton(
-                                onPressed: isLoading ? null : _handleLogin,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(
-                                    context,
-                                  ).primaryColor,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  elevation: 4,
-                                  shadowColor: Theme.of(
-                                    context,
-                                  ).primaryColor.withValues(alpha: 0.4),
-                                ),
-                                child: isLoading
-                                    ? const SizedBox(
-                                        height: 24,
-                                        width: 24,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Iniciar Sesión',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                              ),
-                            )
-                            .animate()
-                            .scale(
-                              delay: 400.ms,
-                              duration: 400.ms,
-                              curve: Curves.easeOut,
-                            )
-                            .fadeIn(),
-                      ],
-                    ),
+                        ),
+                      ).animate().fadeIn(delay: 400.ms).scale(),
+                      
+                      const SizedBox(height: 24),
+                      Center(
+                        child: Text(
+                          'v1.0.0',
+                          style: TextStyle(color: Colors.grey.shade300, fontSize: 12),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

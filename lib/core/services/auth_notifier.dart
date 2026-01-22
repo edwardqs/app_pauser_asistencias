@@ -19,8 +19,7 @@ class AuthNotifier extends Notifier<AuthState> {
       final event = data.event;
       
       if (event == AuthChangeEvent.signedOut || 
-          event == AuthChangeEvent.userDeleted ||
-          event == AuthChangeEvent.tokenRefreshed) { // Check token refresh failures internally handled by client but good to monitor
+          event == AuthChangeEvent.tokenRefreshed) { 
          // La lógica principal se basa en el storage local por ahora, 
          // pero podríamos reaccionar aquí si el token expira irremediablemente.
       }

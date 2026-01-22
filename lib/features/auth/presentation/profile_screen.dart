@@ -1,17 +1,20 @@
 import 'dart:io';
 
+import 'package:app_asistencias_pauser/core/services/auth_notifier.dart'; // Import AuthNotifier
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
-import 'package:app_asistencias_pauser/features/auth/presentation/auth_controller.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/profile_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
-  Future<void> _pickAndUploadImage(BuildContext context, WidgetRef ref, ImageSource source) async {
+  Future<void> _pickAndUploadImage(
+    BuildContext context,
+    WidgetRef ref,
+    ImageSource source,
+  ) async {
     final picker = ImagePicker();
     try {
       final pickedFile = await picker.pickImage(
@@ -23,29 +26,35 @@ class ProfileScreen extends ConsumerWidget {
 
       if (pickedFile != null) {
         final file = File(pickedFile.path);
-        
+
         // Validate size (10MB limit)
         final sizeInBytes = await file.length();
         if (sizeInBytes > 10 * 1024 * 1024) {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('La imagen es demasiado pesada (Máx 10MB)')),
+              const SnackBar(
+                content: Text('La imagen es demasiado pesada (Máx 10MB)'),
+              ),
             );
           }
           return;
         }
 
         // Upload
-        final success = await ref.read(profileControllerProvider.notifier).updateProfilePicture(file);
-        
+        final success = await ref
+            .read(profileControllerProvider.notifier)
+            .updateProfilePicture(file);
+
         if (context.mounted) {
           if (success) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Foto de perfil actualizada correctamente')),
+              const SnackBar(
+                content: Text('Foto de perfil actualizada correctamente'),
+              ),
             );
           } else {
-             // Error handled in controller state, but we can show generic msg
-             ScaffoldMessenger.of(context).showSnackBar(
+            // Error handled in controller state, but we can show generic msg
+            ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Error al subir la imagen')),
             );
           }
@@ -53,9 +62,9 @@ class ProfileScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -92,7 +101,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final storage = ref.watch(storageServiceProvider);
     final profileState = ref.watch(profileControllerProvider);
-    
+
     final profilePic = storage.profilePicture;
 
     return Scaffold(
@@ -113,9 +122,15 @@ class ProfileScreen extends ConsumerWidget {
                   child: CircleAvatar(
                     radius: 60,
                     backgroundColor: const Color(0xFFEFF6FF),
-                    backgroundImage: profilePic != null ? NetworkImage(profilePic) : null,
+                    backgroundImage: profilePic != null
+                        ? NetworkImage(profilePic)
+                        : null,
                     child: profilePic == null
-                        ? const Icon(Icons.person, size: 70, color: Color(0xFF2563EB))
+                        ? const Icon(
+                            Icons.person,
+                            size: 70,
+                            color: Color(0xFF2563EB),
+                          )
                         : null,
                   ),
                 ),
@@ -134,9 +149,16 @@ class ProfileScreen extends ConsumerWidget {
                           ? const SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
                             )
-                          : const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                          : const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                     ),
                   ),
                 ),
@@ -160,7 +182,7 @@ class ProfileScreen extends ConsumerWidget {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            
+
             if (profilePic == null)
               Container(
                 margin: const EdgeInsets.only(top: 16),
@@ -172,12 +194,18 @@ class ProfileScreen extends ConsumerWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.orange.shade700,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'Se requiere foto de perfil obligatoria para el ingreso a planta.',
-                        style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
+                        style: TextStyle(
+                          color: Colors.orange.shade800,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ],
@@ -185,7 +213,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
 
             const SizedBox(height: 32),
-            
+
             _buildInfoCard(
               icon: Icons.badge,
               title: 'DNI / Documento',
@@ -203,9 +231,9 @@ class ProfileScreen extends ConsumerWidget {
               title: 'Unidad de Negocio',
               value: storage.businessUnit ?? 'General',
             ),
-            
+
             const SizedBox(height: 48),
-            
+
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -223,10 +251,14 @@ class ProfileScreen extends ConsumerWidget {
                         TextButton(
                           onPressed: () {
                             Navigator.pop(context);
-                            ref.read(authControllerProvider.notifier).signOut();
-                            context.go('/login');
+                            // Usar el AuthNotifier global para cerrar sesión y disparar redirección
+                            ref.read(authNotifierProvider.notifier).logout();
+                            // No necesitamos context.go('/login') porque el router lo hará automático
                           },
-                          child: const Text('Salir', style: TextStyle(color: Colors.red)),
+                          child: const Text(
+                            'Salir',
+                            style: TextStyle(color: Colors.red),
+                          ),
                         ),
                       ],
                     ),
@@ -251,7 +283,11 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildInfoCard({required IconData icon, required String title, required String value}) {
+  Widget _buildInfoCard({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -275,10 +311,7 @@ class ProfileScreen extends ConsumerWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                ),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
               ),
               Text(
                 value,

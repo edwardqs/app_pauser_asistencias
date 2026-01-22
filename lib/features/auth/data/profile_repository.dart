@@ -15,19 +15,18 @@ class ProfileRepository {
     final fileExt = imageFile.path.split('.').last;
     final fileName = '$employeeId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
     
-    // Upload image to 'profiles' bucket
-    await _supabase.storage.from('profiles').upload(
+    // Upload image to 'avatars' bucket (as defined in SUPABASE_PROFILE_PICTURE.sql)
+    await _supabase.storage.from('avatars').upload(
           fileName,
           imageFile,
           fileOptions: const FileOptions(upsert: true),
         );
 
-    final imageUrl = _supabase.storage.from('profiles').getPublicUrl(fileName);
+    final imageUrl = _supabase.storage.from('avatars').getPublicUrl(fileName);
     
     // Update user profile in database using RPC
-    // Assuming there is an RPC for this, or we can update the employees table directly if RLS allows
-    // Based on file list SUPABASE_UPDATE_PROFILE_RPC.sql exists
-    await _supabase.rpc('update_profile_picture', params: {
+    // RPC name matches SUPABASE_UPDATE_PROFILE_RPC.sql
+    await _supabase.rpc('update_employee_profile_picture', params: {
       'p_employee_id': employeeId,
       'p_image_url': imageUrl,
     });

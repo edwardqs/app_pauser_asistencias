@@ -11,6 +11,7 @@ class AttendanceHistoryState {
   final bool isLoading;
   final bool hasMore;
   final int page;
+  final String filter; // Nuevo campo para el filtro actual
   final Object? error;
 
   AttendanceHistoryState({
@@ -18,6 +19,7 @@ class AttendanceHistoryState {
     this.isLoading = false,
     this.hasMore = true,
     this.page = 0,
+    this.filter = 'all',
     this.error,
   });
 
@@ -26,6 +28,7 @@ class AttendanceHistoryState {
     bool? isLoading,
     bool? hasMore,
     int? page,
+    String? filter,
     Object? error,
   }) {
     return AttendanceHistoryState(
@@ -33,6 +36,7 @@ class AttendanceHistoryState {
       isLoading: isLoading ?? this.isLoading,
       hasMore: hasMore ?? this.hasMore,
       page: page ?? this.page,
+      filter: filter ?? this.filter,
       error: error,
     );
   }
@@ -67,7 +71,12 @@ class AttendanceHistoryNotifier
 
       final newRecords = await ref
           .read(attendanceRepositoryProvider)
-          .getAttendanceHistory(employeeId, page: 0, pageSize: _pageSize);
+          .getAttendanceHistory(
+            employeeId,
+            page: 0,
+            pageSize: _pageSize,
+            filter: state.filter,
+          );
 
       state = state.copyWith(
         records: newRecords,
@@ -78,6 +87,19 @@ class AttendanceHistoryNotifier
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e);
     }
+  }
+
+  Future<void> setFilter(String newFilter) async {
+    if (state.filter == newFilter) return;
+
+    // Resetear lista y cambiar filtro
+    state = AttendanceHistoryState(
+      records: [],
+      isLoading: true,
+      filter: newFilter,
+    );
+
+    await loadInitial();
   }
 
   Future<void> loadMore() async {
@@ -96,6 +118,7 @@ class AttendanceHistoryNotifier
             employeeId,
             page: state.page,
             pageSize: _pageSize,
+            filter: state.filter,
           );
 
       state = state.copyWith(
@@ -112,7 +135,13 @@ class AttendanceHistoryNotifier
   }
 
   void refresh() {
-    state = AttendanceHistoryState(records: [], isLoading: true);
+    // Mantener filtro actual al refrescar
+    final currentFilter = state.filter;
+    state = AttendanceHistoryState(
+      records: [],
+      isLoading: true,
+      filter: currentFilter,
+    );
     loadInitial();
   }
 }
@@ -162,6 +191,32 @@ class _AttendanceHistoryScreenState
     }
   }
 
+  Widget _buildFilterChip(String label, String value, String currentFilter) {
+    final isSelected = currentFilter == value;
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          ref.read(attendanceHistoryProvider.notifier).setFilter(value);
+        }
+      },
+      backgroundColor: Colors.white,
+      selectedColor: const Color(0xFFEFF6FF), // Azul muy claro
+      labelStyle: TextStyle(
+        color: isSelected ? const Color(0xFF2563EB) : Colors.grey.shade700,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected ? const Color(0xFF2563EB) : Colors.grey.shade300,
+        ),
+      ),
+      showCheckmark: false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final historyState = ref.watch(attendanceHistoryProvider);
@@ -180,6 +235,26 @@ class _AttendanceHistoryScreenState
                 ref.read(attendanceHistoryProvider.notifier).refresh(),
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            height: 50,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                _buildFilterChip('Todos', 'all', historyState.filter),
+                const SizedBox(width: 8),
+                _buildFilterChip('Puntuales', 'on_time', historyState.filter),
+                const SizedBox(width: 8),
+                _buildFilterChip('Tardanzas', 'late', historyState.filter),
+                const SizedBox(width: 8),
+                _buildFilterChip('Ausencias', 'absent', historyState.filter),
+              ],
+            ),
+          ),
+        ),
       ),
       body: Builder(
         builder: (context) {
@@ -352,169 +427,184 @@ class _AttendanceHistoryScreenState
                         ],
                       ),
                       const Divider(),
-                      if (!isAbsence) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Entrada',
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 12,
+                      // Bloque de información (Siempre visible, tanto para asistencias como ausencias)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Hora Registro',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      isAbsence
+                                          ? Icons.report_problem_outlined
+                                          : Icons.login,
+                                      size: 16,
+                                      color: isAbsence
+                                          ? Colors.orange
+                                          : Colors.green,
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.login,
-                                        size: 16,
-                                        color: Colors.green,
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      // Para ausencias usamos created_at si no hay check_in
+                                      isAbsence
+                                          ? (record['created_at'] != null
+                                                ? DateFormat('hh:mm a').format(
+                                                    DateTime.parse(
+                                                      record['created_at'],
+                                                    ).toLocal(),
+                                                  )
+                                                : '--:--')
+                                          : (checkIn != null
+                                                ? DateFormat(
+                                                    'hh:mm a',
+                                                  ).format(checkIn)
+                                                : '--:--'),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
                                       ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        checkIn != null
-                                            ? DateFormat(
-                                                'hh:mm a',
-                                              ).format(checkIn)
-                                            : '--:--',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Motivo / Ubicación',
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 12,
-                                    ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Motivo / Ubicación',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
                                   ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      // Botón de Detalle
-                                      GestureDetector(
-                                        onTap:
-                                            (displayNotes != null ||
-                                                evidenceUrl != null)
-                                            ? () {
-                                                showDialog(
-                                                  context: context,
-                                                  builder: (context) => AlertDialog(
-                                                    title: const Text(
-                                                      'Detalle de Justificación',
-                                                    ),
-                                                    content: Column(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        if (displayNotes !=
-                                                            null) ...[
-                                                          const Text(
-                                                            'Motivo:',
-                                                            style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .bold,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    // Botón de Detalle
+                                    GestureDetector(
+                                      onTap:
+                                          (displayNotes != null ||
+                                              evidenceUrl != null)
+                                          ? () {
+                                              showDialog(
+                                                context: context,
+                                                builder: (context) =>
+                                                    AlertDialog(
+                                                      title: const Text(
+                                                        'Detalle de Registro',
+                                                      ),
+                                                      content: Column(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          if (displayNotes !=
+                                                              null) ...[
+                                                            const Text(
+                                                              'Motivo/Notas:',
+                                                              style: TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                              ),
                                                             ),
-                                                          ),
-                                                          const SizedBox(
-                                                            height: 4,
-                                                          ),
-                                                          Text(displayNotes),
-                                                          const SizedBox(
-                                                            height: 16,
-                                                          ),
+                                                            const SizedBox(
+                                                              height: 4,
+                                                            ),
+                                                            Text(displayNotes),
+                                                            const SizedBox(
+                                                              height: 16,
+                                                            ),
+                                                          ],
+                                                          if (evidenceUrl !=
+                                                              null)
+                                                            ElevatedButton.icon(
+                                                              onPressed: () =>
+                                                                  _launchUrl(
+                                                                    evidenceUrl,
+                                                                  ),
+                                                              icon: const Icon(
+                                                                Icons
+                                                                    .attach_file,
+                                                              ),
+                                                              label: const Text(
+                                                                'Ver Evidencia',
+                                                              ),
+                                                            ),
                                                         ],
-                                                        if (evidenceUrl != null)
-                                                          ElevatedButton.icon(
-                                                            onPressed: () =>
-                                                                _launchUrl(
-                                                                  evidenceUrl,
-                                                                ),
-                                                            icon: const Icon(
-                                                              Icons.attach_file,
-                                                            ),
-                                                            label: const Text(
-                                                              'Ver Evidencia',
-                                                            ),
+                                                      ),
+                                                      actions: [
+                                                        TextButton(
+                                                          onPressed: () =>
+                                                              Navigator.pop(
+                                                                context,
+                                                              ),
+                                                          child: const Text(
+                                                            'Cerrar',
                                                           ),
+                                                        ),
                                                       ],
                                                     ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              context,
-                                                            ),
-                                                        child: const Text(
-                                                          'Cerrar',
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-                                              }
-                                            : null,
-                                        child: Icon(
-                                          Icons.info_outline,
-                                          size: 18,
-                                          color:
-                                              (displayNotes != null ||
-                                                  evidenceUrl != null)
-                                              ? Colors.blue
-                                              : Colors.grey.shade300,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      // Botón de Mapa (Nuevo)
-                                      if (locationIn != null)
-                                        GestureDetector(
-                                          onTap: () {
-                                            try {
-                                              final lat = locationIn['lat'];
-                                              final lng = locationIn['lng'];
-                                              if (lat != null && lng != null) {
-                                                _launchUrl(
-                                                  'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
-                                                );
-                                              }
-                                            } catch (e) {
-                                              debugPrint(
-                                                'Error parsing location: $e',
                                               );
                                             }
-                                          },
-                                          child: const Icon(
-                                            Icons.map_outlined,
-                                            size: 18,
-                                            color: Colors.redAccent,
-                                          ),
+                                          : null,
+                                      child: Icon(
+                                        Icons.info_outline,
+                                        size: 18,
+                                        color:
+                                            (displayNotes != null ||
+                                                evidenceUrl != null)
+                                            ? Colors.blue
+                                            : Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    // Botón de Mapa
+                                    if (locationIn != null)
+                                      GestureDetector(
+                                        onTap: () {
+                                          try {
+                                            final lat = locationIn['lat'];
+                                            final lng = locationIn['lng'];
+                                            if (lat != null && lng != null) {
+                                              _launchUrl(
+                                                'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+                                              );
+                                            }
+                                          } catch (e) {
+                                            debugPrint(
+                                              'Error parsing location: $e',
+                                            );
+                                          }
+                                        },
+                                        child: const Icon(
+                                          Icons.map_outlined,
+                                          size: 18,
+                                          color: Colors.redAccent,
                                         ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                      ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
                     ],
                   ),
                 ),

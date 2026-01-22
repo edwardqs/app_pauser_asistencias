@@ -31,14 +31,38 @@ class AttendanceRepository {
     String employeeId, {
     int page = 0,
     int pageSize = 20,
+    String filter = 'all', // 'all', 'on_time', 'late', 'absent'
   }) async {
     final start = page * pageSize;
     final end = start + pageSize - 1;
 
-    final response = await _supabase
+    // IMPORTANTE: Definir 'query' explícitamente como PostgrestFilterBuilder
+    // para poder encadenar filtros (eq, neq, not, inFilter) ANTES de transformaciones (order, range).
+    // El error anterior ocurría porque 'order' devuelve un PostgrestTransformBuilder que ya no acepta filtros WHERE.
+
+    var query = _supabase
         .from('attendance')
-        .select()
-        .eq('employee_id', employeeId)
+        .select() // Esto devuelve PostgrestFilterBuilder
+        .eq('employee_id', employeeId);
+
+    // Aplicar filtros ANTES de ordenar/paginar
+    if (filter == 'on_time') {
+      // Puntuales: tienen check_in, no son tarde, y no son ausencias
+      query = query
+          .not('check_in', 'is', null)
+          .eq('is_late', false)
+          .neq('record_type', 'AUSENCIA')
+          .neq('record_type', 'INASISTENCIA');
+    } else if (filter == 'late') {
+      // Tardanzas: is_late = true
+      query = query.eq('is_late', true);
+    } else if (filter == 'absent') {
+      // Ausencias: record_type es AUSENCIA o INASISTENCIA
+      query = query.inFilter('record_type', ['AUSENCIA', 'INASISTENCIA']);
+    }
+
+    // Finalmente aplicamos orden y rango
+    final response = await query
         .order('created_at', ascending: false)
         .range(start, end);
 

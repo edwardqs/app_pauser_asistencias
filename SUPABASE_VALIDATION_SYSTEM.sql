@@ -44,8 +44,8 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'Supervisor no encontrado');
   END IF;
   
-  -- Roles válidos: SUPERVISOR_VENTAS, SUPERVISOR_OPERACIONES, JEFE_VENTAS, COORDINADOR_OPERACIONES, ADMIN
-  IF v_supervisor.role NOT IN ('SUPERVISOR_VENTAS', 'SUPERVISOR_OPERACIONES', 'JEFE_VENTAS', 'COORDINADOR_OPERACIONES', 'ADMIN') THEN
+  -- Roles válidos: SUPERVISOR_VENTAS, SUPERVISOR_OPERACIONES, JEFE_VENTAS, COORDINADOR_OPERACIONES, ADMIN, ANALISTA_RRHH, JEFE_RRHH
+  IF v_supervisor.role NOT IN ('SUPERVISOR_VENTAS', 'SUPERVISOR_OPERACIONES', 'JEFE_VENTAS', 'COORDINADOR_OPERACIONES', 'ADMIN', 'ANALISTA_RRHH', 'JEFE_RRHH') THEN
     RETURN json_build_object('success', false, 'message', 'Sin permisos de supervisor');
   END IF;
   
@@ -132,7 +132,8 @@ BEGIN
     RETURN json_build_object('success', false, 'message', 'Supervisor no encontrado');
   END IF;
   
-  IF v_supervisor.role NOT IN ('SUPERVISOR_VENTAS', 'SUPERVISOR_OPERACIONES', 'JEFE_VENTAS', 'COORDINADOR_OPERACIONES', 'ADMIN') THEN
+  -- Roles válidos extendidos para RRHH
+  IF v_supervisor.role NOT IN ('SUPERVISOR_VENTAS', 'SUPERVISOR_OPERACIONES', 'JEFE_VENTAS', 'COORDINADOR_OPERACIONES', 'ADMIN', 'ANALISTA_RRHH', 'JEFE_RRHH') THEN
     RETURN json_build_object('success', false, 'message', 'Sin permisos de supervisor');
   END IF;
   

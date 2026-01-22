@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:app_asistencias_pauser/core/services/auth_notifier.dart';
 import 'package:app_asistencias_pauser/features/attendance/presentation/home_screen.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/auth/data/auth_repository.dart';
@@ -59,6 +60,9 @@ class AuthController extends AsyncNotifier<void> {
           position: position,
           profilePicture: profilePicture,
         );
+
+        // Notificar al AuthNotifier que el usuario se ha autenticado correctamente
+        ref.read(authNotifierProvider.notifier).setAuthenticated(true);
 
         state = const AsyncValue.data(null);
         return true;

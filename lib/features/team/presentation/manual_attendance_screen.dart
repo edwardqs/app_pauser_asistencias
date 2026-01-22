@@ -1,5 +1,6 @@
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/team/data/team_repository.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,8 +22,15 @@ class _ManualAttendanceScreenState
   DateTime _selectedDate = DateTime.now().subtract(const Duration(days: 1));
   TimeOfDay _checkInTime = const TimeOfDay(hour: 8, minute: 0);
   TimeOfDay? _checkOutTime = const TimeOfDay(hour: 17, minute: 0);
-  String _recordType = 'ASISTENCIA';
+  String _recordType = 'ASISTENCIA'; // Valor inicial temporal
   final TextEditingController _notesController = TextEditingController();
+
+  // Gestión de Motivos
+  List<Map<String, dynamic>> _absenceReasons = [];
+  bool _isLoadingReasons = true;
+  bool _requiresEvidence = false;
+  String? _evidenceFilePath;
+  String? _evidenceFileName;
 
   List<Map<String, dynamic>> _teamMembers = [];
   bool _loading = true;
@@ -32,12 +40,66 @@ class _ManualAttendanceScreenState
   void initState() {
     super.initState();
     _loadTeamMembers();
+    _loadAbsenceReasons();
   }
 
   @override
   void dispose() {
     _notesController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAbsenceReasons() async {
+    try {
+      final reasons = await ref
+          .read(teamRepositoryProvider)
+          .getAbsenceReasons();
+
+      if (mounted) {
+        setState(() {
+          _absenceReasons = reasons;
+          _isLoadingReasons = false;
+
+          // Establecer valor inicial válido si hay motivos cargados
+          if (reasons.isNotEmpty) {
+            // Buscar si 'ASISTENCIA' existe, si no, usar el primero
+            final defaultReason = reasons.firstWhere(
+              (r) => r['name'] == 'ASISTENCIA',
+              orElse: () => reasons.first,
+            );
+            _recordType = defaultReason['name'];
+            _requiresEvidence = defaultReason['requires_evidence'] ?? false;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingReasons = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error cargando motivos: $e')));
+      }
+    }
+  }
+
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'pdf', 'png', 'jpeg'],
+      );
+
+      if (result != null) {
+        setState(() {
+          _evidenceFilePath = result.files.single.path;
+          _evidenceFileName = result.files.single.name;
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error seleccionando archivo: $e')),
+      );
+    }
   }
 
   Future<void> _loadTeamMembers() async {
@@ -58,12 +120,13 @@ class _ManualAttendanceScreenState
       for (var member in team) {
         // Validación de nulidad: asegurarse que employee_id no sea nulo
         if (member['employee_id'] == null) continue;
-        
+
         final empId = member['employee_id'] as String;
         if (!uniqueEmployees.containsKey(empId)) {
           uniqueEmployees[empId] = {
             'employee_id': empId,
-            'full_name': member['full_name'] ?? 'Sin Nombre', // Valor por defecto
+            'full_name':
+                member['full_name'] ?? 'Sin Nombre', // Valor por defecto
             'position': member['position'] ?? 'Sin Cargo', // Valor por defecto
           };
         }
@@ -123,6 +186,19 @@ class _ManualAttendanceScreenState
       return;
     }
 
+    // Validación de evidencia requerida
+    if (_requiresEvidence && _evidenceFilePath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Este motivo requiere adjuntar un archivo de evidencia',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _submitting = true);
 
     try {
@@ -131,6 +207,17 @@ class _ManualAttendanceScreenState
 
       if (supervisorId == null) {
         throw Exception('No se encontró ID de supervisor');
+      }
+
+      // Subir evidencia si existe
+      String? evidenceUrl;
+      if (_evidenceFilePath != null && _evidenceFileName != null) {
+        // Generar nombre único para evitar colisiones
+        final uniqueName =
+            '${DateTime.now().millisecondsSinceEpoch}_$_evidenceFileName';
+        evidenceUrl = await ref
+            .read(teamRepositoryProvider)
+            .uploadEvidence(_evidenceFilePath!, uniqueName);
       }
 
       // Combinar fecha con horas
@@ -163,6 +250,7 @@ class _ManualAttendanceScreenState
             checkOut: checkOut,
             recordType: _recordType,
             notes: _notesController.text.isEmpty ? null : _notesController.text,
+            evidenceUrl: evidenceUrl, // Pasar URL de evidencia
           );
 
       if (mounted) {
@@ -247,7 +335,7 @@ class _ManualAttendanceScreenState
                         ),
                         prefixIcon: const Icon(Icons.person),
                       ),
-                      items: _teamMembers.map<DropdownMenuItem<String>>(( 
+                      items: _teamMembers.map<DropdownMenuItem<String>>((
                         member,
                       ) {
                         return DropdownMenuItem<String>(
@@ -382,39 +470,129 @@ class _ManualAttendanceScreenState
                       ),
                     ),
                     const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: _recordType,
-                      decoration: InputDecoration(
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        prefixIcon: const Icon(Icons.category),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'ASISTENCIA',
-                          child: Text('Asistencia'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'PERMISO',
-                          child: Text('Permiso'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'VACACIONES',
-                          child: Text('Vacaciones'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'LICENCIA',
-                          child: Text('Licencia Médica'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() => _recordType = value);
-                        }
-                      },
-                    ),
+                    _isLoadingReasons
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        : DropdownButtonFormField<String>(
+                            value: _recordType,
+                            decoration: InputDecoration(
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              prefixIcon: const Icon(Icons.category),
+                            ),
+                            items: _absenceReasons
+                                .map<DropdownMenuItem<String>>((reason) {
+                                  return DropdownMenuItem<String>(
+                                    value: reason['name'],
+                                    child: Text(reason['name']),
+                                  );
+                                })
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  _recordType = value;
+                                  // Actualizar si requiere evidencia
+                                  final reason = _absenceReasons.firstWhere(
+                                    (r) => r['name'] == value,
+                                    orElse: () => {'requires_evidence': false},
+                                  );
+                                  _requiresEvidence =
+                                      reason['requires_evidence'] ?? false;
+
+                                  // Limpiar archivo si ya no es requerido (opcional, mejor dejarlo por si el usuario cambia de opinión)
+                                });
+                              }
+                            },
+                          ),
                     const SizedBox(height: 20),
+
+                    // Selector de Archivo (Condicional)
+                    if (_requiresEvidence || _evidenceFilePath != null) ...[
+                      Text(
+                        'Evidencia / Archivo ${_requiresEvidence ? "*" : "(Opcional)"}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: _pickFile,
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color:
+                                  _requiresEvidence && _evidenceFilePath == null
+                                  ? Colors.red.shade300
+                                  : Colors.grey.shade300,
+                              style: BorderStyle.solid,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            color: Colors.grey.shade50,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _evidenceFilePath != null
+                                    ? Icons.check_circle
+                                    : Icons.upload_file,
+                                color: _evidenceFilePath != null
+                                    ? Colors.green
+                                    : Colors.grey,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _evidenceFileName ??
+                                      'Seleccionar archivo (PDF, Imagen)',
+                                  style: TextStyle(
+                                    color: _evidenceFileName != null
+                                        ? Colors.black
+                                        : Colors.grey.shade600,
+                                    fontWeight: _evidenceFileName != null
+                                        ? FontWeight.w500
+                                        : FontWeight.normal,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (_evidenceFilePath != null)
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _evidenceFilePath = null;
+                                      _evidenceFileName = null;
+                                    });
+                                  },
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (_requiresEvidence && _evidenceFilePath == null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4, left: 12),
+                          child: Text(
+                            'Es obligatorio adjuntar evidencia para este motivo',
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 20),
+                    ],
 
                     // Notas
                     const Text(

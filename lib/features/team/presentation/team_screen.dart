@@ -478,19 +478,67 @@ class _ManualRegisterSheet extends ConsumerStatefulWidget {
 class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
   final _formKey = GlobalKey<FormState>();
   DateTime _selectedDate = DateTime.now();
-  TimeOfDay _selectedTime = TimeOfDay.now(); // Hora actual por defecto
-  String _selectedType = 'IN'; // IN, ABSENCE
+  TimeOfDay _selectedTime = TimeOfDay.now();
+  String _selectedType = 'IN';
   final _notesController = TextEditingController();
   bool _isLoading = false;
-  io.File? _evidenceFile; // Uso de alias para el tipo de variable
+  io.File? _evidenceFile;
   String? _evidenceFileName;
+
+  // Inicializamos con valores por defecto para asegurar que siempre se vean
+  List<Map<String, dynamic>> _absenceReasons = [
+    {'name': 'ENFERMEDAD COMUN', 'requires_evidence': true},
+    {'name': 'MOTIVOS DE SALUD', 'requires_evidence': true},
+    {'name': 'MOTIVOS FAMILIARES', 'requires_evidence': false},
+    {'name': 'PERMISO', 'requires_evidence': false},
+    {'name': 'VACACIONES', 'requires_evidence': false},
+  ];
+  bool _isLoadingReasons = false;
+  bool _dynamicEvidenceRequired = false;
+
+  // Gestión de Subcategorías (Descanso Médico)
+  String? _selectedSubcategory;
+  final List<String> _medicalSubcategories = [
+    'Accidente común',
+    'Accidente de trabajo',
+    'Enfermedad común',
+    'Maternidad',
+  ];
 
   // Límite de tardanza (07:00 AM)
   static const _lateLimitHour = 7;
   static const _lateLimitMinute = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    // Intentamos cargar del servidor, si falla, ya tenemos los locales
+    _loadReasonsFromServer();
+  }
+
+  Future<void> _loadReasonsFromServer() async {
+    // No ponemos isLoading en true para no bloquear la UI con el spinner
+    try {
+      final reasons = await ref
+          .read(teamRepositoryProvider)
+          .getAbsenceReasons();
+      if (mounted && reasons.isNotEmpty) {
+        setState(() {
+          _absenceReasons = reasons;
+        });
+      }
+    } catch (e) {
+      // print('Error loading reasons (usando locales): $e');
+    }
+  }
+
   bool get _isLate {
-    if (_selectedType == 'ABSENCE') return true;
+    // Si no es Entrada, verificamos si el motivo requiere evidencia
+    if (_selectedType != 'IN') {
+      return _dynamicEvidenceRequired;
+    }
+
+    // Si es Entrada, verificamos horario
     if (_selectedType == 'IN') {
       if (_selectedTime.hour > _lateLimitHour) return true;
       if (_selectedTime.hour == _lateLimitHour &&
@@ -602,23 +650,77 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
             ),
             const SizedBox(height: 16),
 
-            // Tipo de Registro (SIN SALIDA)
+            // Tipo de Registro (Dinámico)
             DropdownButtonFormField<String>(
+              isExpanded: true,
               value: _selectedType,
               decoration: const InputDecoration(
                 labelText: 'Tipo de Registro',
                 border: OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(
+              items: [
+                const DropdownMenuItem<String>(
                   value: 'IN',
                   child: Text('Entrada (Check-in)'),
                 ),
-                DropdownMenuItem(value: 'ABSENCE', child: Text('Inasistencia')),
+                // Mapear motivos
+                ..._absenceReasons
+                    .where((r) => r['name'] != 'ASISTENCIA')
+                    .map<DropdownMenuItem<String>>((reason) {
+                      return DropdownMenuItem<String>(
+                        value: reason['name'],
+                        child: Text(
+                          reason['name'],
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      );
+                    })
+                    .toList(), // Importante el toList()
               ],
-              onChanged: (val) => setState(() => _selectedType = val!),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _selectedType = val;
+                    _selectedSubcategory =
+                        null; // Resetear subcategoría al cambiar tipo
+
+                    // Buscar si requiere evidencia
+                    if (val != 'IN') {
+                      final r = _absenceReasons.firstWhere(
+                        (element) => element['name'] == val,
+                        orElse: () => {'requires_evidence': false},
+                      );
+                      _dynamicEvidenceRequired =
+                          r['requires_evidence'] ?? false;
+                    } else {
+                      _dynamicEvidenceRequired = false;
+                    }
+                  });
+                }
+              },
             ),
             const SizedBox(height: 16),
+
+            // Selector de Subcategoría (Solo para Descanso Médico)
+            if (_selectedType == 'DESCANSO MÉDICO') ...[
+              DropdownButtonFormField<String>(
+                value: _selectedSubcategory,
+                decoration: const InputDecoration(
+                  labelText: 'Tipo de Descanso *',
+                  border: OutlineInputBorder(),
+                ),
+                items: _medicalSubcategories
+                    .map(
+                      (sub) => DropdownMenuItem(value: sub, child: Text(sub)),
+                    )
+                    .toList(),
+                onChanged: (val) => setState(() => _selectedSubcategory = val),
+                validator: (val) =>
+                    val == null ? 'Seleccione una opción' : null,
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Notas
             TextFormField(
@@ -630,14 +732,14 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
               maxLines: 2,
               validator: (val) {
                 if (_isLate && (val == null || val.isEmpty)) {
-                  return 'Requerido para tardanza/inasistencia';
+                  return 'Requerido para tardanza/motivos especiales';
                 }
                 return null;
               },
             ),
             const SizedBox(height: 16),
 
-            // Evidencia (Obligatoria si es Tarde o Inasistencia)
+            // Evidencia (Obligatoria si es Tarde o Motivo Especial)
             if (_isLate) ...[
               Container(
                 padding: const EdgeInsets.all(12),
@@ -658,8 +760,8 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            _selectedType == 'ABSENCE'
-                                ? 'Inasistencia requiere evidencia'
+                            _selectedType != 'IN'
+                                ? 'Este motivo requiere evidencia obligatoria'
                                 : 'Tardanza detectada (>07:00). Requiere evidencia.',
                             style: TextStyle(
                               color: Colors.orange.shade900,
@@ -777,14 +879,14 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
 
       // Obtener ubicación
       final position = await _getCurrentLocation();
-      Map<String, dynamic>? locationData;
+      // Map<String, dynamic>? locationData; // Eliminado por no uso
       if (position != null) {
-        locationData = {
+        /* locationData = {
           'latitude': position.latitude,
           'longitude': position.longitude,
           'accuracy': position.accuracy,
           'timestamp': position.timestamp.toIso8601String(),
-        };
+        }; */
       }
 
       // Subir evidencia si existe
@@ -807,13 +909,12 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
             workDate: _selectedDate,
             checkIn: fullDateTime,
             // checkOut eliminado
-            recordType: _selectedType == 'ABSENCE'
-                ? 'ABSENCE'
-                : 'IN', // Backend maneja 'IN' -> 'ASISTENCIA'
+            recordType: _selectedType == 'IN' ? 'ASISTENCIA' : _selectedType,
+            subcategory: _selectedSubcategory, // Pasar subcategoría
             notes: _notesController.text,
             evidenceUrl: evidenceUrl,
-            isLate: _isLate, // Pasar explícitamente si es tardanza
-            location: locationData,
+            // isLate: _isLate, // Ya no se pasa, lo calcula el backend o es parte del recordType
+            // location: locationData, // RPC register_manual_attendance no recibe location aún, pero lo dejamos preparado
           );
 
       if (mounted) {
@@ -826,8 +927,21 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
       }
     } catch (e) {
       if (mounted) {
+        String errorMessage = 'Error al guardar';
+        if (e.toString().contains('duplicate key') ||
+            e.toString().contains('already exists')) {
+          errorMessage =
+              'Ya existe un registro para este empleado en esta fecha.';
+        } else if (e.toString().contains('Exception:')) {
+          errorMessage = e.toString().replaceAll('Exception:', '').trim();
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } finally {

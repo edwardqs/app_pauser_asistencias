@@ -117,7 +117,9 @@ class AttendanceRepository {
 
   Future<void> reportAbsence({
     required String employeeId,
-    required String reason,
+    required String reason, // Ahora esto será la nota/comentario
+    required String
+    recordType, // NUEVO: Tipo de motivo (ej. 'ENFERMEDAD COMUN')
     required double lat,
     required double lng,
     File? evidenceFile,
@@ -132,14 +134,29 @@ class AttendanceRepository {
             'evidence/$employeeId/absence_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
 
         await _supabase.storage
-            .from('attendance_evidence')
+            .from(
+              'attendance_evidence',
+            ) // Asegurarse que este bucket existe o usar 'evidence'
             .upload(fileName, evidenceFile);
 
         evidenceUrl = _supabase.storage
             .from('attendance_evidence')
             .getPublicUrl(fileName);
       } catch (e) {
-        throw Exception('Error subiendo evidencia: $e');
+        // Fallback a bucket 'evidence' si 'attendance_evidence' falla
+        try {
+          final fileExt = evidenceFile.path.split('.').last;
+          final fileName =
+              'evidence/$employeeId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+          await _supabase.storage
+              .from('evidence')
+              .upload(fileName, evidenceFile);
+          evidenceUrl = _supabase.storage
+              .from('evidence')
+              .getPublicUrl(fileName);
+        } catch (e2) {
+          throw Exception('Error subiendo evidencia: $e');
+        }
       }
     }
 
@@ -150,7 +167,7 @@ class AttendanceRepository {
         'p_employee_id': employeeId,
         'p_lat': lat,
         'p_lng': lng,
-        'p_type': 'ABSENCE',
+        'p_type': recordType, // Pasamos el tipo seleccionado
         'p_notes': reason,
         'p_evidence_url': evidenceUrl,
       },
@@ -158,6 +175,21 @@ class AttendanceRepository {
 
     if (response['success'] == false) {
       throw Exception(response['message']);
+    }
+  }
+
+  // Método para obtener motivos (Reutilizando lógica, idealmente mover a un provider común)
+  Future<List<Map<String, dynamic>>> getAbsenceReasons() async {
+    try {
+      final response = await _supabase
+          .from('absence_reasons')
+          .select()
+          .eq('is_active', true)
+          .order('name');
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      throw Exception('Error cargando motivos: $e');
     }
   }
 

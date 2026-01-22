@@ -64,21 +64,21 @@ class AttendanceLogic {
       return;
     }
 
-    // 1. Mostrar diálogo de justificación
+    // 1. Mostrar diálogo de justificación con tipos dinámicos
+    // Pasamos la referencia al repositorio para cargar motivos
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => const JustificationDialog(
-        title: 'Reportar Inasistencia',
-        message:
-            'Describe el motivo de tu falta. Si tienes certificado médico u otra evidencia, adjúntala.',
-        isEvidenceRequired:
-            false, // Opcional o obligatorio según regla de negocio
+      builder: (context) => JustificationDialog(
+        title: 'Reportar Novedad / Inasistencia',
+        message: 'Seleccione el motivo y describa los detalles.',
+        repositoryRef: ref.read(attendanceRepositoryProvider), // Pasar repo
       ),
     );
 
     if (result == null) return; // Cancelado
 
     final reason = result['reason'];
+    final recordType = result['recordType'];
     final evidenceFile = result['file'];
 
     // 2. Proceder a reportar
@@ -93,6 +93,7 @@ class AttendanceLogic {
             .reportAbsence(
               employeeId: employeeId,
               reason: reason,
+              recordType: recordType,
               evidenceFile: evidenceFile,
               lat: position.latitude,
               lng: position.longitude,
@@ -311,25 +312,25 @@ class HomeScreen extends ConsumerWidget {
           // Filtrar asistencia efectiva (si no es de hoy, es como si no hubiera registro hoy)
           final effectiveAttendance = isRecordFromToday ? attendance : null;
 
+          // Solo consideramos check-in activo si es de hoy, no tiene salida Y es de tipo ASISTENCIA
           final isCheckedIn =
               effectiveAttendance != null &&
-              effectiveAttendance['check_out'] == null;
+              effectiveAttendance['check_out'] == null &&
+              effectiveAttendance['record_type'] == 'ASISTENCIA';
 
           final lastCheckIn = effectiveAttendance != null
               ? effectiveAttendance['check_in']
               : null;
 
-          // Si ya marcó salida hoy O si es una INASISTENCIA registrada
+          // Si ya marcó salida hoy O si es una INASISTENCIA registrada (cualquier tipo que no sea asistencia)
           final isDayComplete =
               effectiveAttendance != null &&
               (effectiveAttendance['check_out'] != null ||
-                  effectiveAttendance['record_type'] == 'INASISTENCIA' ||
-                  effectiveAttendance['record_type'] == 'AUSENCIA');
+                  effectiveAttendance['record_type'] != 'ASISTENCIA');
 
           final isAbsence =
               effectiveAttendance != null &&
-              (effectiveAttendance['record_type'] == 'INASISTENCIA' ||
-                  effectiveAttendance['record_type'] == 'AUSENCIA');
+              effectiveAttendance['record_type'] != 'ASISTENCIA';
 
           // Hora límite para TARDANZA: 07:00 (7 AM)
           final tardanzaLimit = DateTime(now.year, now.month, now.day, 7, 0);
@@ -586,7 +587,9 @@ class HomeScreen extends ConsumerWidget {
                                     const SizedBox(height: 16),
                                     Text(
                                       isAbsence
-                                          ? 'Inasistencia Registrada'
+                                          ? (effectiveAttendance != null
+                                                ? effectiveAttendance['record_type']
+                                                : 'Ausencia Registrada')
                                           : '¡Jornada Iniciada!',
                                       style: TextStyle(
                                         color: isAbsence
@@ -595,6 +598,7 @@ class HomeScreen extends ConsumerWidget {
                                         fontSize: 22,
                                         fontWeight: FontWeight.bold,
                                       ),
+                                      textAlign: TextAlign.center,
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
@@ -780,13 +784,15 @@ class HomeScreen extends ConsumerWidget {
 class JustificationDialog extends StatefulWidget {
   final String title;
   final String message;
-  final bool isEvidenceRequired;
+  final bool isEvidenceRequired; // Legacy support
+  final dynamic repositoryRef; // Para cargar motivos
 
   const JustificationDialog({
     super.key,
     required this.title,
     required this.message,
     this.isEvidenceRequired = false,
+    this.repositoryRef,
   });
 
   @override
@@ -796,6 +802,44 @@ class JustificationDialog extends StatefulWidget {
 class _JustificationDialogState extends State<JustificationDialog> {
   final _reasonController = TextEditingController();
   File? _evidenceFile;
+
+  // Logic for dynamic reasons
+  List<Map<String, dynamic>> _absenceReasons = [];
+  String? _selectedReasonType;
+  bool _isLoadingReasons = false;
+  bool _dynamicEvidenceRequired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.repositoryRef != null) {
+      _loadReasons();
+    } else {
+      // Fallback or legacy mode
+      _dynamicEvidenceRequired = widget.isEvidenceRequired;
+    }
+  }
+
+  Future<void> _loadReasons() async {
+    setState(() => _isLoadingReasons = true);
+    try {
+      final reasons = await widget.repositoryRef.getAbsenceReasons();
+      if (mounted) {
+        setState(() {
+          _absenceReasons = reasons;
+          _isLoadingReasons = false;
+          if (reasons.isNotEmpty) {
+            // Default to first one or specific one
+            _selectedReasonType = reasons.first['name'];
+            _dynamicEvidenceRequired =
+                reasons.first['requires_evidence'] ?? false;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingReasons = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -826,41 +870,90 @@ class _JustificationDialogState extends State<JustificationDialog> {
               style: const TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 16),
+
+            // Selector de Motivo (Si hay repositorio)
+            if (widget.repositoryRef != null) ...[
+              if (_isLoadingReasons)
+                const Center(child: CircularProgressIndicator())
+              else if (_absenceReasons.isNotEmpty)
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: _selectedReasonType,
+                  decoration: const InputDecoration(
+                    labelText: 'Tipo de Motivo',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _absenceReasons.map<DropdownMenuItem<String>>((r) {
+                    return DropdownMenuItem(
+                      value: r['name'],
+                      child: Text(r['name'], overflow: TextOverflow.ellipsis),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedReasonType = val;
+                      final r = _absenceReasons.firstWhere(
+                        (e) => e['name'] == val,
+                      );
+                      _dynamicEvidenceRequired =
+                          r['requires_evidence'] ?? false;
+                    });
+                  },
+                ),
+              const SizedBox(height: 16),
+            ],
+
             TextField(
               controller: _reasonController,
               decoration: const InputDecoration(
-                labelText: 'Motivo / Justificación',
+                labelText: 'Comentarios / Detalles',
                 border: OutlineInputBorder(),
               ),
               maxLines: 2,
             ),
             const SizedBox(height: 16),
             Text(
-              'Adjuntar evidencia${widget.isEvidenceRequired ? ' (Obligatorio)' : ''}:',
+              'Adjuntar evidencia${_dynamicEvidenceRequired ? ' (Obligatorio)' : ''}:',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: _dynamicEvidenceRequired ? Colors.red : null,
+              ),
             ),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _evidenceFile != null
-                        ? _evidenceFile!.path.split('/').last
-                        : 'Ningún archivo seleccionado',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color:
-                          (widget.isEvidenceRequired && _evidenceFile == null)
-                          ? Colors.red
-                          : null,
+            InkWell(
+              onTap: _pickFile,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.attach_file,
+                      color: _evidenceFile != null ? Colors.green : Colors.grey,
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _evidenceFile != null
+                            ? _evidenceFile!.path.split('/').last
+                            : 'Toca para adjuntar archivo',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color:
+                              (_dynamicEvidenceRequired &&
+                                  _evidenceFile == null)
+                              ? Colors.red
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  onPressed: _pickFile,
-                  icon: const Icon(Icons.attach_file),
-                ),
-              ],
+              ),
             ),
           ],
         ),
@@ -872,23 +965,40 @@ class _JustificationDialogState extends State<JustificationDialog> {
         ),
         ElevatedButton(
           onPressed: () {
-            if (_reasonController.text.isEmpty) {
+            // Validaciones
+            if (widget.repositoryRef != null && _selectedReasonType == null) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Debes ingresar un motivo')),
+                const SnackBar(content: Text('Seleccione un tipo de motivo')),
               );
               return;
             }
-            if (widget.isEvidenceRequired && _evidenceFile == null) {
+
+            if (_reasonController.text.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Es obligatorio adjuntar evidencia'),
+                  content: Text('Debes ingresar un comentario o detalle'),
                 ),
               );
               return;
             }
-            Navigator.of(
-              context,
-            ).pop({'reason': _reasonController.text, 'file': _evidenceFile});
+            if (_dynamicEvidenceRequired && _evidenceFile == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Es obligatorio adjuntar evidencia para este motivo',
+                  ),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+
+            Navigator.of(context).pop({
+              'reason': _reasonController.text,
+              'file': _evidenceFile,
+              'recordType':
+                  _selectedReasonType ?? 'AUSENCIA', // Fallback legacy
+            });
           },
           child: const Text('Confirmar'),
         ),

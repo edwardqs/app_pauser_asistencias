@@ -322,6 +322,9 @@ class _AttendanceHistoryScreenState
               final isAbsence =
                   recordType == 'INASISTENCIA' || recordType == 'AUSENCIA';
               final isValidated = record['validated'] == true;
+              final isRejected =
+                  record['validated'] == false &&
+                  record['validated_by'] != null;
               final locationIn = record['location_in'];
 
               final notes = record['notes'];
@@ -418,10 +421,25 @@ class _AttendanceHistoryScreenState
                           if (isValidated)
                             Padding(
                               padding: const EdgeInsets.only(left: 8.0),
-                              child: Icon(
-                                Icons.verified,
-                                size: 16,
-                                color: Colors.blue.shade600,
+                              child: Tooltip(
+                                message: 'Validado',
+                                child: Icon(
+                                  Icons.verified,
+                                  size: 16,
+                                  color: Colors.blue.shade600,
+                                ),
+                              ),
+                            )
+                          else if (isRejected)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: Tooltip(
+                                message: 'Rechazado',
+                                child: Icon(
+                                  Icons.cancel,
+                                  size: 16,
+                                  color: Colors.red.shade600,
+                                ),
                               ),
                             ),
                         ],

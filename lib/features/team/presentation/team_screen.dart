@@ -264,9 +264,22 @@ class TeamScreen extends ConsumerWidget {
     Color statusColor;
     String statusText;
 
-    if (recordType == 'INASISTENCIA' || recordType == 'AUSENCIA') {
+    if (recordType == 'INASISTENCIA' ||
+        recordType == 'AUSENCIA' ||
+        recordType == 'FALTA JUSTIFICADA' ||
+        recordType == 'AUSENCIA SIN JUSTIFICAR' ||
+        recordType == 'FALTA_INJUSTIFICADA') {
       statusColor = Colors.red;
       statusText = 'Ausente';
+    } else if (recordType == 'DESCANSO MÉDICO') {
+      statusColor = Colors.indigo;
+      statusText = 'Desc. Médico';
+    } else if (recordType == 'LICENCIA CON GOCE' || recordType == 'LICENCIA') {
+      statusColor = Colors.purple;
+      statusText = 'Licencia';
+    } else if (recordType == 'VACACIONES') {
+      statusColor = Colors.orange;
+      statusText = 'Vacaciones';
     } else if (checkOut != null) {
       statusColor = Colors.grey;
       statusText = 'Salida';

@@ -15,9 +15,20 @@ class TeamRepository {
     String supervisorId,
   ) async {
     try {
+      // Usamos la nueva RPC get_daily_attendance_report para obtener TODOS
+      // los empleados, similar a la web.
+      // Filtramos por fecha actual (Hora Peru) en el cliente o modificando RPC.
+      // Para la app móvil de supervisor, queremos ver a TODO el personal.
+
       final response = await _supabase.rpc(
-        'get_team_attendance',
-        params: {'p_supervisor_id': supervisorId},
+        'get_daily_attendance_report', // Reutilizamos la lógica robusta de la web
+        params: {
+          'p_date': DateTime.now().toIso8601String().split('T')[0], // Hoy
+          'p_search': '',
+          'p_offset': 0,
+          'p_limit': 1000, // Traer todos (paginación alta)
+          'p_status': 'all',
+        },
       );
 
       if (response == null) {

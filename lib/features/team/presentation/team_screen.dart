@@ -37,6 +37,39 @@ class TeamScreen extends ConsumerWidget {
     final teamAsync = ref.watch(teamAttendanceProvider);
     final currentFilter = ref.watch(teamFilterProvider);
 
+    // Verificar permisos de Supervisor (Solo RRHH)
+    final storage = ref.watch(storageServiceProvider);
+    final userPosition = (storage.position ?? '').trim().toUpperCase();
+    final isSupervisor =
+        userPosition.contains('GENTE Y GESTION') ||
+        userPosition.contains('RRHH') ||
+        userPosition.contains('GENTE & GESTION');
+
+    if (!isSupervisor) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('Mi Equipo'),
+          backgroundColor: const Color(0xFF2563EB),
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock_outline, size: 64, color: Colors.grey),
+              SizedBox(height: 16),
+              Text('No tienes permisos para ver esta sección.'),
+              Text(
+                'Solo personal de Gente y Gestión.',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(

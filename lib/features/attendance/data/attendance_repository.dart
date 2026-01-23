@@ -208,4 +208,18 @@ class AttendanceRepository {
       },
     );
   }
+
+  // NUEVO: Registrar falta injustificada automática (Triggered by Client)
+  Future<void> registerUnjustifiedAbsence(String employeeId) async {
+    try {
+      // Usamos RPC segura en lugar de insert directo para evitar problemas de RLS
+      await _supabase.rpc(
+        'register_auto_absence',
+        params: {'p_employee_id': employeeId},
+      );
+    } catch (e) {
+      // Ignorar errores, es un proceso background best-effort
+      print('Error auto-registering absence: $e');
+    }
+  }
 }

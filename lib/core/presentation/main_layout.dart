@@ -11,7 +11,10 @@ class MainLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final storage = ref.watch(storageServiceProvider);
-    final userRole = storage.employeeType; // O storage.role si lo cambiamos
+
+    // Usamos 'position' (cargo) en lugar de 'employeeType' (rol) porque ahí es donde está "ANALISTA DE GENTE Y GESTION"
+    // Si 'position' es nulo, fallbback a 'employeeType'
+    final userRole = storage.position ?? storage.employeeType;
 
     final hasTeamAccess = _checkTeamAccess(userRole);
 
@@ -43,7 +46,8 @@ class MainLayout extends ConsumerWidget {
       body: child,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _calculateSelectedIndex(context, hasTeamAccess),
-        onDestinationSelected: (index) => _onItemTapped(index, context, hasTeamAccess),
+        onDestinationSelected: (index) =>
+            _onItemTapped(index, context, hasTeamAccess),
         destinations: destinations,
       ),
     );
@@ -51,20 +55,32 @@ class MainLayout extends ConsumerWidget {
 
   bool _checkTeamAccess(String? role) {
     if (role == null) return false;
-    final upperRole = role.toUpperCase();
+    // Normalizar quitando tildes y pasando a mayúsculas
+    final normalizedRole = role
+        .toUpperCase()
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U');
+
+    // Lista de roles/cargos que tienen acceso
+    // Incluimos ANALISTA DE GENTE Y GESTION explícitamente
     return [
       'SUPERVISOR',
       'JEFE',
       'COORDINADOR',
       'GERENTE',
-      'ADMIN'
-    ].any((r) => upperRole.contains(r));
+      'ADMIN',
+      'ANALISTA DE GENTE Y GESTION',
+      'GENTE Y GESTION', // Para cubrir variantes
+    ].any((r) => normalizedRole.contains(r));
   }
 
   int _calculateSelectedIndex(BuildContext context, bool hasTeamAccess) {
     final String location = GoRouterState.of(context).uri.path;
     if (location.startsWith('/home')) return 0;
-    
+
     if (hasTeamAccess) {
       if (location.startsWith('/manual-attendance')) return 1;
       if (location.startsWith('/history')) return 2;
@@ -73,7 +89,7 @@ class MainLayout extends ConsumerWidget {
       if (location.startsWith('/history')) return 1;
       if (location.startsWith('/profile')) return 2;
     }
-    
+
     return 0;
   }
 

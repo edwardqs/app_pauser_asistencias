@@ -280,14 +280,13 @@ class HomeScreen extends ConsumerWidget {
     // final userRole = storage.employeeType;
     final fullName = storage.fullName ?? 'Usuario';
 
-    // Lista de roles con privilegios de gestión (no bloqueados por horario)
-    // final isSupervisor = [
-    //   'SUPERVISOR',
-    //   'JEFE_VENTAS',
-    //   'SUPERVISOR_VENTAS',
-    //   'SUPERVISOR_OPERACIONES',
-    //   'COORDINADOR_OPERACIONES',
-    // ].contains(userRole);
+    // Lista de cargos con privilegios de gestión
+    // Solo Analistas de Gente y Gestión (o RRHH) tienen permisos
+    final userPosition = (storage.position ?? '').trim().toUpperCase();
+    final isSupervisor =
+        userPosition.contains('GENTE Y GESTION') ||
+        userPosition.contains('RRHH') ||
+        userPosition.contains('GENTE & GESTION');
 
     // Watch data
     // Use select to watch only specific parts if needed, or watch the whole provider
@@ -336,18 +335,41 @@ class HomeScreen extends ConsumerWidget {
           final tardanzaLimit = DateTime(now.year, now.month, now.day, 7, 0);
 
           // Hora límite para CIERRE/INASISTENCIA: 18:00 (6 PM)
-          // final absenceLimit = DateTime(now.year, now.month, now.day, 18, 0);
+          final absenceLimit = DateTime(now.year, now.month, now.day, 18, 0);
 
           final isTardanza = now.isAfter(tardanzaLimit);
-          // final isPastAbsenceLimit = now.isAfter(absenceLimit);
+          final isPastAbsenceLimit = now.isAfter(absenceLimit);
 
-          // Si pasó las 18:00 y no marcó, es "Inasistencia por justificar"
-          // Habilitamos el botón pero cambiamos su función visualmente
-          // final isAbsenceJustificationMode =
-          //    !isCheckedIn && !isDayComplete && isPastAbsenceLimit;
+          // Lógica de Falta Injustificada
+          // 1. Si ya viene del backend con ese estado
+          final isMarkedFalta =
+              effectiveAttendance != null &&
+              (effectiveAttendance['status'] == 'FALTA_INJUSTIFICADA' ||
+                  effectiveAttendance['absence_reason'] ==
+                      'FALTA INJUSTIFICADA');
 
-          // final canMark =
-          //    !isDayComplete && !isCheckedIn; // Solo puede marcar si NO ha completado Y NO está en jornada
+          // 2. Si no hay registro y ya pasó la hora límite (Simulación cliente + Persistencia)
+          final shouldRegisterFalta =
+              effectiveAttendance == null && isPastAbsenceLimit;
+          final isFaltaInjustificada = isMarkedFalta || shouldRegisterFalta;
+
+          // AUTO-REGISTRO DE FALTA:
+          // Si detectamos que debería ser falta pero no está en BD (effectiveAttendance == null),
+          // disparamos el registro silencioso para que la Web lo vea.
+          if (shouldRegisterFalta) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              // Usamos un provider/flag o simplemente llamamos al repo.
+              // Para evitar spam, el repositorio maneja 'duplicate key' exception.
+              // Además, al invalidar el provider, la UI se actualizará y esta condición será falsa.
+              ref
+                  .read(attendanceRepositoryProvider)
+                  .registerUnjustifiedAbsence(employeeId!)
+                  .then((_) {
+                    // Refrescar para traer el nuevo registro de la BD
+                    ref.invalidate(attendanceDataProvider(employeeId));
+                  });
+            });
+          }
 
           return Stack(
             children: [
@@ -556,45 +578,59 @@ class HomeScreen extends ConsumerWidget {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            if (isDayComplete || isCheckedIn) ...[
+                            if (isFaltaInjustificada ||
+                                isDayComplete ||
+                                isCheckedIn) ...[
                               // COMPLETED STATE
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(32),
                                 decoration: BoxDecoration(
-                                  color: isAbsence
-                                      ? Colors.orange.shade50
-                                      : Colors.green.shade50,
+                                  color: isFaltaInjustificada
+                                      ? Colors.red.shade50
+                                      : (isAbsence
+                                            ? Colors.orange.shade50
+                                            : Colors.green.shade50),
                                   borderRadius: BorderRadius.circular(32),
                                   border: Border.all(
-                                    color: isAbsence
-                                        ? Colors.orange.shade200
-                                        : Colors.green.shade200,
+                                    color: isFaltaInjustificada
+                                        ? Colors.red.shade200
+                                        : (isAbsence
+                                              ? Colors.orange.shade200
+                                              : Colors.green.shade200),
                                     width: 2,
                                   ),
                                 ),
                                 child: Column(
                                   children: [
                                     Icon(
-                                      isAbsence
-                                          ? Icons.assignment_late
-                                          : Icons.check_circle,
+                                      isFaltaInjustificada
+                                          ? Icons.block
+                                          : (isAbsence
+                                                ? Icons.assignment_late
+                                                : Icons.check_circle),
                                       size: 64,
-                                      color: isAbsence
-                                          ? Colors.orange
-                                          : Colors.green,
+                                      color: isFaltaInjustificada
+                                          ? Colors.red
+                                          : (isAbsence
+                                                ? Colors.orange
+                                                : Colors.green),
                                     ),
                                     const SizedBox(height: 16),
                                     Text(
-                                      isAbsence
-                                          ? (effectiveAttendance != null
-                                                ? effectiveAttendance['record_type']
-                                                : 'Ausencia Registrada')
-                                          : '¡Jornada Iniciada!',
+                                      isFaltaInjustificada
+                                          ? 'FALTA INJUSTIFICADA'
+                                          : (isAbsence
+                                                ? (effectiveAttendance != null
+                                                      ? effectiveAttendance['record_type']
+                                                      : 'Ausencia Registrada')
+                                                : '¡Jornada Iniciada!'),
                                       style: TextStyle(
-                                        color: isAbsence
-                                            ? Colors.orange.shade800
-                                            : Colors.green.shade800,
+                                        color: isFaltaInjustificada
+                                            ? Colors.red.shade800
+                                            : (isAbsence
+                                                  ? Colors.orange.shade800
+                                                  : Colors.green.shade800),
                                         fontSize: 22,
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -602,14 +638,18 @@ class HomeScreen extends ConsumerWidget {
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      isAbsence
-                                          ? 'Tu reporte ha sido enviado.'
-                                          : 'Entrada: ${lastCheckIn != null ? DateFormat('hh:mm a').format(DateTime.parse(lastCheckIn).toLocal()) : '--:--'}',
+                                      isFaltaInjustificada
+                                          ? 'No registraste asistencia antes de las 6:00 PM.'
+                                          : (isAbsence
+                                                ? 'Tu reporte ha sido enviado.'
+                                                : 'Entrada: ${lastCheckIn != null ? DateFormat('hh:mm a').format(DateTime.parse(lastCheckIn).toLocal()) : '--:--'}'),
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
-                                        color: isAbsence
-                                            ? Colors.orange.shade700
-                                            : Colors.green.shade700,
+                                        color: isFaltaInjustificada
+                                            ? Colors.red.shade700
+                                            : (isAbsence
+                                                  ? Colors.orange.shade700
+                                                  : Colors.green.shade700),
                                         fontSize: 16,
                                       ),
                                     ),
@@ -709,35 +749,37 @@ class HomeScreen extends ConsumerWidget {
                               const SizedBox(height: 24),
 
                               // Absence Button (Secondary)
-                              SizedBox(
-                                width: double.infinity,
-                                height: 56,
-                                child: OutlinedButton.icon(
-                                  onPressed: () {
-                                    if (employeeId != null) {
-                                      AttendanceLogic(
-                                        ref,
-                                      ).reportAbsence(context, employeeId);
-                                    }
-                                  },
-                                  icon: const Icon(Icons.sick_outlined),
-                                  label: const Text('REPORTAR INASISTENCIA'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.red.shade600,
-                                    side: BorderSide(
-                                      color: Colors.red.shade200,
-                                      width: 1.5,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    textStyle: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
+                              if (!isSupervisor) ...[
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 56,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      if (employeeId != null) {
+                                        AttendanceLogic(
+                                          ref,
+                                        ).reportAbsence(context, employeeId);
+                                      }
+                                    },
+                                    icon: const Icon(Icons.sick_outlined),
+                                    label: const Text('REPORTAR INASISTENCIA'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red.shade600,
+                                      side: BorderSide(
+                                        color: Colors.red.shade200,
+                                        width: 1.5,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      textStyle: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ],
                           ],
                         ),

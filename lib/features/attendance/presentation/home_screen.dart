@@ -302,14 +302,19 @@ class HomeScreen extends ConsumerWidget {
         data: (attendance) {
           // Lógica de Horario Estricto
           final now = DateTime.now();
-          final todayStr = DateFormat('yyyy-MM-dd').format(now);
+          // Usamos la misma cadena de fecha que se usa en la query del repositorio
+          final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
           // Validar si el registro recuperado es de hoy
+          // La query ya filtra por fecha exacta, así que si attendance != null, ES de hoy.
+          // Pero mantenemos la verificación por seguridad.
           final recordDate = attendance?['work_date'] as String?;
           final isRecordFromToday = recordDate == todayStr;
 
-          // Filtrar asistencia efectiva (si no es de hoy, es como si no hubiera registro hoy)
-          final effectiveAttendance = isRecordFromToday ? attendance : null;
+          // Filtrar asistencia efectiva
+          // Si el repositorio devuelve null, effectiveAttendance es null.
+          // Si devuelve algo, confiamos en que es de hoy gracias al filtro del repo.
+          final effectiveAttendance = attendance;
 
           // Solo consideramos check-in activo si es de hoy, no tiene salida Y es de tipo ASISTENCIA
           final isCheckedIn =
@@ -438,14 +443,14 @@ class HomeScreen extends ConsumerWidget {
                                   ),
                                 ),
                                 Text(
-                                  fullName.split(
-                                    ' ',
-                                  )[0], // First name only for cleaner look
+                                  fullName, // Nombre completo (Apellido y Nombre)
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 24,
+                                    fontSize:
+                                        20, // Ajustado ligeramente para nombres largos
                                     fontWeight: FontWeight.bold,
                                   ),
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ],

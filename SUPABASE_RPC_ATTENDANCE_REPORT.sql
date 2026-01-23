@@ -158,7 +158,7 @@ BEGIN
     INTO v_on_time, v_late, v_absent
     FROM public.attendance a
     JOIN public.employees e ON a.employee_id = e.id
-    WHERE a.work_date = p_date
+    WHERE a.work_date = p_date -- FILTRO CRUCIAL POR FECHA
     AND e.is_active = true
     AND (
         p_search = '' OR 
@@ -167,8 +167,6 @@ BEGIN
     );
 
     -- 3. Calcular Pendientes (Los que faltan registrar)
-    -- Nota: v_absent cuenta los que YA tienen registro de ausencia.
-    -- Pendientes son los que NO tienen ningún registro.
     -- Total = (Puntuales + Tardanzas + Ausencias_Registradas + Otros_Tipos) + Pendientes
     
     -- Para ser exactos, contamos todos los registros del día
@@ -178,7 +176,7 @@ BEGIN
         SELECT count(*) INTO v_total_records
         FROM public.attendance a
         JOIN public.employees e ON a.employee_id = e.id
-        WHERE a.work_date = p_date
+        WHERE a.work_date = p_date -- FILTRO CRUCIAL POR FECHA
         AND e.is_active = true
         AND (p_search = '' OR e.full_name ILIKE v_search_term OR e.dni ILIKE v_search_term);
         

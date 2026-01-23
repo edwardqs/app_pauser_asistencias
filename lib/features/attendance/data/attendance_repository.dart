@@ -12,16 +12,17 @@ class AttendanceRepository {
   AttendanceRepository(this._supabase);
 
   Future<Map<String, dynamic>?> getTodayAttendance(String employeeId) async {
-    // CAMBIO: Obtenemos el ÚLTIMO registro de asistencia, sin filtrar por fecha estricta en la query.
-    // La validación de si es "de hoy" se hará en la capa de lógica/UI.
-    // Esto previene problemas de zona horaria donde la app cree que es hoy pero la DB lo guardó diferente, o viceversa.
+    // CAMBIO: Obtenemos el registro que coincida explícitamente con la fecha actual de Perú
+    // Esto asegura que la app móvil sepa si "hoy" ya marcó o no, independientemente de la hora UTC.
+    final now = DateTime.now();
+    final todayStr =
+        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
     final response = await _supabase
         .from('attendance')
         .select()
         .eq('employee_id', employeeId)
-        .order('created_at', ascending: false)
-        .limit(1)
+        .eq('work_date', todayStr) // Filtro explícito por fecha
         .maybeSingle();
 
     return response;

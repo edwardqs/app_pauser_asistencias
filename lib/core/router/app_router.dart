@@ -6,6 +6,7 @@ import 'package:app_asistencias_pauser/features/auth/presentation/login_screen.d
 import 'package:app_asistencias_pauser/features/auth/presentation/profile_screen.dart';
 import 'package:app_asistencias_pauser/features/team/presentation/manual_attendance_screen.dart';
 import 'package:app_asistencias_pauser/features/team/presentation/team_screen.dart';
+import 'package:app_asistencias_pauser/features/requests/presentation/my_requests_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -16,10 +17,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: authState.isAuthenticated ? '/home' : '/login',
     routes: [
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       ShellRoute(
         builder: (context, state, child) {
           return MainLayout(child: child);
@@ -44,6 +42,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/manual-attendance',
             builder: (context, state) => const ManualAttendanceScreen(),
+          ),
+          GoRoute(
+            path: '/requests',
+            builder: (context, state) => const MyRequestsScreen(),
           ),
         ],
       ),

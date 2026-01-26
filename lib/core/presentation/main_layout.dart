@@ -36,6 +36,11 @@ class MainLayout extends ConsumerWidget {
         label: 'Historial',
       ),
       const NavigationDestination(
+        icon: Icon(Icons.description_outlined),
+        selectedIcon: Icon(Icons.description),
+        label: 'Solicitudes',
+      ),
+      const NavigationDestination(
         icon: Icon(Icons.person_outline),
         selectedIcon: Icon(Icons.person),
         label: 'Perfil',
@@ -84,10 +89,12 @@ class MainLayout extends ConsumerWidget {
     if (hasTeamAccess) {
       if (location.startsWith('/manual-attendance')) return 1;
       if (location.startsWith('/history')) return 2;
-      if (location.startsWith('/profile')) return 3;
+      if (location.startsWith('/requests')) return 3;
+      if (location.startsWith('/profile')) return 4;
     } else {
       if (location.startsWith('/history')) return 1;
-      if (location.startsWith('/profile')) return 2;
+      if (location.startsWith('/requests')) return 2;
+      if (location.startsWith('/profile')) return 3;
     }
 
     return 0;
@@ -100,14 +107,15 @@ class MainLayout extends ConsumerWidget {
           context.go('/home');
           break;
         case 1:
-          // Redirige a la pantalla principal de EQUIPO (Lista + Filtros)
-          // La funcionalidad manual ahora es un modal dentro de esa pantalla.
           context.go('/team');
           break;
         case 2:
           context.go('/history');
           break;
         case 3:
+          context.go('/requests');
+          break;
+        case 4:
           context.go('/profile');
           break;
       }
@@ -120,6 +128,9 @@ class MainLayout extends ConsumerWidget {
           context.go('/history');
           break;
         case 2:
+          context.go('/requests');
+          break;
+        case 3:
           context.go('/profile');
           break;
       }

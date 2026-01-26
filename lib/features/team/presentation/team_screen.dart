@@ -636,59 +636,48 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
             Row(
               children: [
                 Expanded(
-                  child: InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _selectedDate,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime.now(),
-                      );
-                      if (picked != null) {
-                        setState(() => _selectedDate = picked);
-                      }
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Fecha',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.calendar_today),
+                  child: InputDecorator(
+                    // No InkWell = No Clickable
+                    decoration: const InputDecoration(
+                      labelText: 'Fecha (Hoy)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(
+                        Icons.calendar_today,
+                        color: Colors.grey,
                       ),
-                      child: Text(
-                        DateFormat('dd/MM/yyyy').format(_selectedDate),
-                      ),
+                      fillColor: Color(0xFFF5F5F5),
+                      filled: true,
+                      enabled: false,
+                    ),
+                    child: Text(
+                      DateFormat('dd/MM/yyyy').format(_selectedDate),
+                      style: const TextStyle(color: Colors.black54),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: InkWell(
-                    onTap: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: _selectedTime,
-                      );
-                      if (picked != null) {
-                        setState(() => _selectedTime = picked);
-                      }
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Hora',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.access_time),
-                      ),
-                      child: Text(
-                        DateFormat('hh:mm a').format(
-                          DateTime(
-                            2022,
-                            1,
-                            1,
-                            _selectedTime.hour,
-                            _selectedTime.minute,
-                          ),
+                  child: InputDecorator(
+                    // No InkWell = No Clickable
+                    decoration: const InputDecoration(
+                      labelText: 'Hora (Ahora)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.access_time, color: Colors.grey),
+                      fillColor: Color(0xFFF5F5F5),
+                      filled: true,
+                      enabled: false,
+                    ),
+                    child: Text(
+                      DateFormat('hh:mm a').format(
+                        DateTime(
+                          2022,
+                          1,
+                          1,
+                          _selectedTime.hour,
+                          _selectedTime.minute,
                         ),
                       ),
+                      style: const TextStyle(color: Colors.black54),
                     ),
                   ),
                 ),

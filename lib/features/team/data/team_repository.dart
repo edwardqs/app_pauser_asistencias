@@ -90,6 +90,7 @@ class TeamRepository {
           'p_supervisor_id': supervisorId,
           'p_work_date': workDate.toIso8601String().split('T')[0],
           'p_check_in': checkIn.toUtc().toIso8601String(),
+          'p_check_out': checkOut?.toUtc().toIso8601String(), // AGREGADO
           'p_record_type': recordType,
           'p_subcategory': subcategory, // Enviamos subcategoría
           'p_notes': notes,

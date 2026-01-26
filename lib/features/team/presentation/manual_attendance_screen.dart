@@ -19,9 +19,9 @@ class _ManualAttendanceScreenState
   final _formKey = GlobalKey<FormState>();
 
   String? _selectedEmployeeId;
-  DateTime _selectedDate = DateTime.now().subtract(const Duration(days: 1));
-  TimeOfDay _checkInTime = const TimeOfDay(hour: 8, minute: 0);
-  TimeOfDay? _checkOutTime = const TimeOfDay(hour: 17, minute: 0);
+  DateTime _selectedDate = DateTime.now(); // Fijar a Hoy
+  TimeOfDay _checkInTime = TimeOfDay.now(); // Fijar a Ahora
+  TimeOfDay? _checkOutTime; // Opcional, empieza vacío
   String _recordType = 'ASISTENCIA'; // Valor inicial temporal
   final TextEditingController _notesController = TextEditingController();
 
@@ -238,6 +238,23 @@ class _ManualAttendanceScreenState
           _checkOutTime!.hour,
           _checkOutTime!.minute,
         );
+
+        if (checkOut.isBefore(checkIn)) {
+          // Asumir que es al día siguiente si es menor? O mostrar error?
+          // Por seguridad, mostrar error.
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'La hora de salida no puede ser anterior a la entrada',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          setState(() => _submitting = false);
+          return;
+        }
       }
 
       await ref
@@ -371,95 +388,74 @@ class _ManualAttendanceScreenState
                     ),
                     const SizedBox(height: 20),
 
-                    // Fecha
+                    // Fecha (Solo Lectura)
                     const Text(
-                      'Fecha *',
+                      'Fecha (Hoy) *',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    InkWell(
-                      onTap: _selectDate,
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          prefixIcon: const Icon(Icons.calendar_today),
+                    InputDecorator(
+                      // Quitamos InkWell para que no sea clickable
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(
-                          DateFormat(
-                            'EEEE, d MMMM yyyy',
-                            'es',
-                          ).format(_selectedDate),
+                        prefixIcon: const Icon(
+                          Icons.calendar_today,
+                          color: Colors.grey,
                         ),
+                        fillColor: Colors.grey.shade100,
+                        filled: true,
+                        enabled: false, // Visualmente deshabilitado
+                      ),
+                      child: Text(
+                        DateFormat(
+                          'EEEE, d MMMM yyyy',
+                          'es',
+                        ).format(_selectedDate),
+                        style: TextStyle(color: Colors.grey.shade700),
                       ),
                     ),
                     const SizedBox(height: 20),
 
-                    // Hora de entrada
+                    // Hora de entrada (Solo Lectura - Ahora)
                     const Text(
-                      'Hora de Entrada *',
+                      'Hora de Entrada (Ahora) *',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    InkWell(
-                      onTap: () => _selectTime(true),
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          prefixIcon: const Icon(Icons.access_time),
+                    InputDecorator(
+                      // Quitamos InkWell
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(_checkInTime.format(context)),
+                        prefixIcon: const Icon(
+                          Icons.access_time,
+                          color: Colors.grey,
+                        ),
+                        fillColor: Colors.grey.shade100,
+                        filled: true,
+                        enabled: false,
+                      ),
+                      child: Text(
+                        _checkInTime.format(context),
+                        style: TextStyle(color: Colors.grey.shade700),
                       ),
                     ),
                     const SizedBox(height: 20),
 
-                    // Hora de salida
-                    const Text(
-                      'Hora de Salida (Opcional)',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: () => _selectTime(false),
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          prefixIcon: const Icon(Icons.access_time_filled),
-                          suffixIcon: _checkOutTime != null
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear),
-                                  onPressed: () {
-                                    setState(() => _checkOutTime = null);
-                                  },
-                                )
-                              : null,
-                        ),
-                        child: Text(
-                          _checkOutTime?.format(context) ??
-                              'Sin hora de salida',
-                          style: TextStyle(
-                            color: _checkOutTime == null
-                                ? Colors.grey.shade600
-                                : Colors.black,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+                    // Hora de salida (Eliminado o bloqueado)
+                    // Para cumplir estrictamente con "no modificable", si mostramos salida
+                    // y permitimos editarla, violamos la regla. Si la mostramos vacía, está bien.
+                    // Pero dado que es un registro manual "en el momento", la salida no aplica aún.
+                    // Vamos a ocultar la sección de Salida para evitar confusión.
 
                     // Tipo de registro
                     const Text(

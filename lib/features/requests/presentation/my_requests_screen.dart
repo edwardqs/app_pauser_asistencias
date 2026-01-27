@@ -32,24 +32,96 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mis Solicitudes'),
-        backgroundColor: Colors.blue.shade800,
-        foregroundColor: Colors.white,
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.white,
-          tabs: const [
-            Tab(text: 'Nueva Solicitud'),
-            Tab(text: 'Historial'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [_NewRequestForm(), _RequestsHistory()],
+      backgroundColor: Colors.white, // Fondo general blanco
+      body: Stack(
+        children: [
+          // 1. Header Background (Más alto para TabBar)
+          Container(
+            height: 200,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
+              ),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(32),
+                bottomRight: Radius.circular(32),
+              ),
+            ),
+          ),
+
+          // 2. Content
+          SafeArea(
+            child: Column(
+              children: [
+                // Title
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Center(
+                    child: Text(
+                      'Mis Solicitudes',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // TabBar Custom
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    height: 45,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    child: TabBar(
+                      controller: _tabController,
+                      indicator: BoxDecoration(
+                        borderRadius: BorderRadius.circular(25),
+                        color: Colors.white,
+                      ),
+                      labelColor: const Color(0xFF2563EB),
+                      unselectedLabelColor: Colors.white,
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                      dividerColor: Colors.transparent,
+                      tabs: const [
+                        Tab(text: 'Nueva Solicitud'),
+                        Tab(text: 'Historial'),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // TabBarView Content
+                Expanded(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(24),
+                        topRight: Radius.circular(24),
+                      ),
+                    ),
+                    child: TabBarView(
+                      controller: _tabController,
+                      children: const [_NewRequestForm(), _RequestsHistory()],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

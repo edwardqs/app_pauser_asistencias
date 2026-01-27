@@ -106,179 +106,251 @@ class ProfileScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Mi Perfil'),
-        backgroundColor: const Color(0xFF2563EB),
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Stack(
-              children: [
-                GestureDetector(
-                  onTap: () => _showPickerOptions(context, ref),
-                  child: CircleAvatar(
-                    radius: 60,
-                    backgroundColor: const Color(0xFFEFF6FF),
-                    backgroundImage: profilePic != null
-                        ? NetworkImage(profilePic)
-                        : null,
-                    child: profilePic == null
-                        ? const Icon(
-                            Icons.person,
-                            size: 70,
-                            color: Color(0xFF2563EB),
-                          )
-                        : null,
-                  ),
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: GestureDetector(
-                    onTap: () => _showPickerOptions(context, ref),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF2563EB),
-                        shape: BoxShape.circle,
-                      ),
-                      child: profileState.isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Text(
-              storage.fullName ?? 'Usuario',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
+      body: Stack(
+        children: [
+          // 1. Header Background (Alto para contener avatar y textos)
+          Container(
+            height: 320,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
               ),
-              textAlign: TextAlign.center,
-            ),
-            Text(
-              storage.position ?? 'Empleado',
-              style: const TextStyle(
-                fontSize: 16,
-                color: Color(0xFF64748B),
-                fontWeight: FontWeight.w500,
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(32),
+                bottomRight: Radius.circular(32),
               ),
             ),
+          ),
 
-            if (profilePic == null)
-              Container(
-                margin: const EdgeInsets.only(top: 16),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      color: Colors.orange.shade700,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Se requiere foto de perfil obligatoria para el ingreso a planta.',
+          // 2. Contenido Principal
+          Column(
+            children: [
+              // Header Content
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 16, bottom: 24),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Mi Perfil',
                         style: TextStyle(
-                          color: Colors.orange.shade800,
-                          fontSize: 13,
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+                      // Avatar con botón de cámara
+                      Stack(
+                        children: [
+                          GestureDetector(
+                            onTap: () => _showPickerOptions(context, ref),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                              child: CircleAvatar(
+                                radius: 55,
+                                backgroundColor: const Color(0xFFEFF6FF),
+                                backgroundImage: profilePic != null
+                                    ? NetworkImage(profilePic)
+                                    : null,
+                                child: profilePic == null
+                                    ? const Icon(
+                                        Icons.person,
+                                        size: 60,
+                                        color: Color(0xFF2563EB),
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: GestureDetector(
+                              onTap: () => _showPickerOptions(context, ref),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF2563EB),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 4,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: profileState.isLoading
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.camera_alt,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        storage.fullName ?? 'Usuario',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        storage.position ?? 'Empleado',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
-            const SizedBox(height: 32),
+              // Cuerpo Blanco (Card Style)
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(32),
+                      topRight: Radius.circular(32),
+                    ),
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        if (profilePic == null)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 24),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.orange.shade700,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Se requiere foto de perfil obligatoria para el ingreso a planta.',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade800,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
 
-            _buildInfoCard(
-              icon: Icons.badge,
-              title: 'DNI / Documento',
-              value: '*** *** ${storage.employeeId?.substring(0, 4) ?? "----"}',
-            ),
-            const SizedBox(height: 16),
-            _buildInfoCard(
-              icon: Icons.business,
-              title: 'Sede',
-              value: storage.sede ?? 'No asignada',
-            ),
-            const SizedBox(height: 16),
-            _buildInfoCard(
-              icon: Icons.store,
-              title: 'Unidad de Negocio',
-              value: storage.businessUnit ?? 'General',
-            ),
-
-            const SizedBox(height: 48),
-
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Cerrar Sesión'),
-                      content: const Text('¿Estás seguro que deseas salir?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancelar'),
+                        _buildInfoCard(
+                          icon: Icons.badge,
+                          title: 'DNI / Documento',
+                          value:
+                              '*** *** ${storage.employeeId?.substring(0, 4) ?? "----"}',
                         ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            // Usar el AuthNotifier global para cerrar sesión y disparar redirección
-                            ref.read(authNotifierProvider.notifier).logout();
-                            // No necesitamos context.go('/login') porque el router lo hará automático
-                          },
-                          child: const Text(
-                            'Salir',
-                            style: TextStyle(color: Colors.red),
+                        const SizedBox(height: 16),
+                        _buildInfoCard(
+                          icon: Icons.business,
+                          title: 'Sede',
+                          value: storage.sede ?? 'No asignada',
+                        ),
+                        const SizedBox(height: 16),
+                        _buildInfoCard(
+                          icon: Icons.store,
+                          title: 'Unidad de Negocio',
+                          value: storage.businessUnit ?? 'General',
+                        ),
+
+                        const SizedBox(height: 48),
+
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Cerrar Sesión'),
+                                  content: const Text(
+                                    '¿Estás seguro que deseas salir?',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        ref
+                                            .read(authNotifierProvider.notifier)
+                                            .logout();
+                                      },
+                                      child: const Text(
+                                        'Salir',
+                                        style: TextStyle(color: Colors.red),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.logout),
+                            label: const Text('Cerrar Sesión'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade50,
+                              foregroundColor: Colors.red,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 0,
+                            ),
                           ),
                         ),
+                        // Espacio extra para el scroll
+                        const SizedBox(height: 40),
                       ],
                     ),
-                  );
-                },
-                icon: const Icon(Icons.logout),
-                label: const Text('Cerrar Sesión'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade50,
-                  foregroundColor: Colors.red,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
                   ),
-                  elevation: 0,
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

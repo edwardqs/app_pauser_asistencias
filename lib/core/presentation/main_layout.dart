@@ -19,41 +19,84 @@ class MainLayout extends ConsumerWidget {
     final hasTeamAccess = _checkTeamAccess(userRole);
 
     final destinations = [
-      const NavigationDestination(
-        icon: Icon(Icons.home_outlined),
-        selectedIcon: Icon(Icons.home),
+      NavigationDestination(
+        icon: const Icon(Icons.home_outlined),
+        selectedIcon: const Icon(Icons.home_filled),
         label: 'Inicio',
       ),
       if (hasTeamAccess)
-        const NavigationDestination(
-          icon: Icon(Icons.people_outline),
-          selectedIcon: Icon(Icons.people),
+        NavigationDestination(
+          icon: const Icon(Icons.people_outline),
+          selectedIcon: const Icon(Icons.people),
           label: 'Equipo',
         ),
-      const NavigationDestination(
-        icon: Icon(Icons.history_outlined),
-        selectedIcon: Icon(Icons.history),
+      NavigationDestination(
+        icon: const Icon(Icons.history_outlined),
+        selectedIcon: const Icon(Icons.history),
         label: 'Historial',
       ),
-      const NavigationDestination(
-        icon: Icon(Icons.description_outlined),
-        selectedIcon: Icon(Icons.description),
+      NavigationDestination(
+        icon: const Icon(Icons.description_outlined),
+        selectedIcon: const Icon(Icons.description),
         label: 'Solicitudes',
       ),
-      const NavigationDestination(
-        icon: Icon(Icons.person_outline),
-        selectedIcon: Icon(Icons.person),
+      NavigationDestination(
+        icon: const Icon(Icons.person_outline),
+        selectedIcon: const Icon(Icons.person),
         label: 'Perfil',
       ),
     ];
 
+    const primaryColor = Color(0xFF2563EB);
+
     return Scaffold(
       body: child,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _calculateSelectedIndex(context, hasTeamAccess),
-        onDestinationSelected: (index) =>
-            _onItemTapped(index, context, hasTeamAccess),
-        destinations: destinations,
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: NavigationBarTheme(
+          data: NavigationBarThemeData(
+            indicatorColor: primaryColor.withOpacity(0.1),
+            labelTextStyle: MaterialStateProperty.resolveWith((states) {
+              if (states.contains(MaterialState.selected)) {
+                return const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: primaryColor,
+                );
+              }
+              return TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade600,
+              );
+            }),
+            iconTheme: MaterialStateProperty.resolveWith((states) {
+              if (states.contains(MaterialState.selected)) {
+                return const IconThemeData(color: primaryColor);
+              }
+              return IconThemeData(color: Colors.grey.shade600);
+            }),
+          ),
+          child: NavigationBar(
+            height: 70,
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.white,
+            elevation: 0,
+            selectedIndex: _calculateSelectedIndex(context, hasTeamAccess),
+            onDestinationSelected: (index) =>
+                _onItemTapped(index, context, hasTeamAccess),
+            destinations: destinations,
+          ),
+        ),
       ),
     );
   }
@@ -87,7 +130,9 @@ class MainLayout extends ConsumerWidget {
     if (location.startsWith('/home')) return 0;
 
     if (hasTeamAccess) {
-      if (location.startsWith('/manual-attendance')) return 1;
+      if (location.startsWith('/team') ||
+          location.startsWith('/manual-attendance'))
+        return 1;
       if (location.startsWith('/history')) return 2;
       if (location.startsWith('/requests')) return 3;
       if (location.startsWith('/profile')) return 4;

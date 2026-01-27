@@ -295,355 +295,482 @@ class _ManualAttendanceScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Registro Manual'),
-        backgroundColor: Colors.blue.shade700,
-        foregroundColor: Colors.white,
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Información
-                    Card(
-                      color: Colors.blue.shade50,
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              color: Colors.blue.shade700,
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Text(
-                                'Registre asistencias manualmente para su equipo',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
+      backgroundColor: Colors.white,
+      body: Stack(
+        children: [
+          // 1. Header Background
+          Container(
+            height: 150,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
+              ),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(32),
+                bottomRight: Radius.circular(32),
+              ),
+            ),
+          ),
 
-                    // Selector de empleado
-                    const Text(
-                      'Empleado *',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+          // 2. Content
+          SafeArea(
+            child: Column(
+              children: [
+                // AppBar Custom
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: Colors.white),
+                        onPressed: () => Navigator.of(context).pop(),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      value: _selectedEmployeeId,
-                      decoration: InputDecoration(
-                        hintText: 'Seleccione un empleado',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        prefixIcon: const Icon(Icons.person),
-                      ),
-                      items: _teamMembers.map<DropdownMenuItem<String>>((
-                        member,
-                      ) {
-                        return DropdownMenuItem<String>(
-                          value: member['employee_id'],
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                member['full_name'],
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              Text(
-                                member['position'],
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() => _selectedEmployeeId = value);
-                      },
-                      validator: (value) {
-                        if (value == null) return 'Seleccione un empleado';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Fecha (Solo Lectura)
-                    const Text(
-                      'Fecha (Hoy) *',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    InputDecorator(
-                      // Quitamos InkWell para que no sea clickable
-                      decoration: InputDecoration(
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.calendar_today,
-                          color: Colors.grey,
-                        ),
-                        fillColor: Colors.grey.shade100,
-                        filled: true,
-                        enabled: false, // Visualmente deshabilitado
-                      ),
-                      child: Text(
-                        DateFormat(
-                          'EEEE, d MMMM yyyy',
-                          'es',
-                        ).format(_selectedDate),
-                        style: TextStyle(color: Colors.grey.shade700),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Hora de entrada (Solo Lectura - Ahora)
-                    const Text(
-                      'Hora de Entrada (Ahora) *',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    InputDecorator(
-                      // Quitamos InkWell
-                      decoration: InputDecoration(
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.access_time,
-                          color: Colors.grey,
-                        ),
-                        fillColor: Colors.grey.shade100,
-                        filled: true,
-                        enabled: false,
-                      ),
-                      child: Text(
-                        _checkInTime.format(context),
-                        style: TextStyle(color: Colors.grey.shade700),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Hora de salida (Eliminado o bloqueado)
-                    // Para cumplir estrictamente con "no modificable", si mostramos salida
-                    // y permitimos editarla, violamos la regla. Si la mostramos vacía, está bien.
-                    // Pero dado que es un registro manual "en el momento", la salida no aplica aún.
-                    // Vamos a ocultar la sección de Salida para evitar confusión.
-
-                    // Tipo de registro
-                    const Text(
-                      'Tipo de Registro *',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _isLoadingReasons
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: CircularProgressIndicator(),
-                            ),
-                          )
-                        : DropdownButtonFormField<String>(
-                            value: _recordType,
-                            decoration: InputDecoration(
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              prefixIcon: const Icon(Icons.category),
-                            ),
-                            items: _absenceReasons
-                                .map<DropdownMenuItem<String>>((reason) {
-                                  return DropdownMenuItem<String>(
-                                    value: reason['name'],
-                                    child: Text(reason['name']),
-                                  );
-                                })
-                                .toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  _recordType = value;
-                                  // Actualizar si requiere evidencia
-                                  final reason = _absenceReasons.firstWhere(
-                                    (r) => r['name'] == value,
-                                    orElse: () => {'requires_evidence': false},
-                                  );
-                                  _requiresEvidence =
-                                      reason['requires_evidence'] ?? false;
-
-                                  // Limpiar archivo si ya no es requerido (opcional, mejor dejarlo por si el usuario cambia de opinión)
-                                });
-                              }
-                            },
-                          ),
-                    const SizedBox(height: 20),
-
-                    // Selector de Archivo (Condicional)
-                    if (_requiresEvidence || _evidenceFilePath != null) ...[
-                      Text(
-                        'Evidencia / Archivo ${_requiresEvidence ? "*" : "(Opcional)"}',
-                        style: const TextStyle(
-                          fontSize: 16,
+                      const Text(
+                        'Registro Manual',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      InkWell(
-                        onTap: _pickFile,
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color:
-                                  _requiresEvidence && _evidenceFilePath == null
-                                  ? Colors.red.shade300
-                                  : Colors.grey.shade300,
-                              style: BorderStyle.solid,
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                            color: Colors.grey.shade50,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _evidenceFilePath != null
-                                    ? Icons.check_circle
-                                    : Icons.upload_file,
-                                color: _evidenceFilePath != null
-                                    ? Colors.green
-                                    : Colors.grey,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  _evidenceFileName ??
-                                      'Seleccionar archivo (PDF, Imagen)',
-                                  style: TextStyle(
-                                    color: _evidenceFileName != null
-                                        ? Colors.black
-                                        : Colors.grey.shade600,
-                                    fontWeight: _evidenceFileName != null
-                                        ? FontWeight.w500
-                                        : FontWeight.normal,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (_evidenceFilePath != null)
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.close,
-                                    color: Colors.grey,
-                                  ),
-                                  onPressed: () {
-                                    setState(() {
-                                      _evidenceFilePath = null;
-                                      _evidenceFileName = null;
-                                    });
-                                  },
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (_requiresEvidence && _evidenceFilePath == null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4, left: 12),
-                          child: Text(
-                            'Es obligatorio adjuntar evidencia para este motivo',
-                            style: TextStyle(
-                              color: Colors.red.shade700,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 20),
                     ],
+                  ),
+                ),
 
-                    // Notas
-                    const Text(
-                      'Notas (Opcional)',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                const SizedBox(height: 8),
+
+                Expanded(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(24),
+                        topRight: Radius.circular(24),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _notesController,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        hintText: 'Agregue notas o comentarios...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        prefixIcon: const Icon(Icons.note),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
+                    child: _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : SingleChildScrollView(
+                            padding: const EdgeInsets.all(24),
+                            child: Form(
+                              key: _formKey,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // Información
+                                  Card(
+                                    elevation: 0,
+                                    color: Colors.blue.shade50,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.info_outline,
+                                            color: Colors.blue.shade700,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          const Expanded(
+                                            child: Text(
+                                              'Registre asistencias manualmente para su equipo',
+                                              style: TextStyle(fontSize: 13),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
 
-                    // Botón de envío
-                    ElevatedButton(
-                      onPressed: _submitting ? null : _submitForm,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade700,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: _submitting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'Registrar Asistencia',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                                  // Selector de empleado
+                                  const Text(
+                                    'Empleado *',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  DropdownButtonFormField<String>(
+                                    isExpanded: true,
+                                    value: _selectedEmployeeId,
+                                    decoration: InputDecoration(
+                                      hintText: 'Seleccione un empleado',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
+                                      prefixIcon: const Icon(Icons.person),
+                                    ),
+                                    items: _teamMembers
+                                        .map<DropdownMenuItem<String>>((
+                                          member,
+                                        ) {
+                                          return DropdownMenuItem<String>(
+                                            value: member['employee_id'],
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  member['full_name'],
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  member['position'],
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey.shade600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        })
+                                        .toList(),
+                                    onChanged: (value) {
+                                      setState(
+                                        () => _selectedEmployeeId = value,
+                                      );
+                                    },
+                                    validator: (value) {
+                                      if (value == null)
+                                        return 'Seleccione un empleado';
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 20),
+
+                                  // Fecha (Solo Lectura)
+                                  const Text(
+                                    'Fecha (Hoy) *',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  InputDecorator(
+                                    decoration: InputDecoration(
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
+                                      prefixIcon: const Icon(
+                                        Icons.calendar_today,
+                                        color: Colors.grey,
+                                      ),
+                                      fillColor: Colors.grey.shade50,
+                                      filled: true,
+                                      enabled: false,
+                                    ),
+                                    child: Text(
+                                      DateFormat(
+                                        'EEEE, d MMMM yyyy',
+                                        'es',
+                                      ).format(_selectedDate),
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+
+                                  // Hora de entrada (Solo Lectura - Ahora)
+                                  const Text(
+                                    'Hora de Entrada (Ahora) *',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  InputDecorator(
+                                    decoration: InputDecoration(
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
+                                      prefixIcon: const Icon(
+                                        Icons.access_time,
+                                        color: Colors.grey,
+                                      ),
+                                      fillColor: Colors.grey.shade50,
+                                      filled: true,
+                                      enabled: false,
+                                    ),
+                                    child: Text(
+                                      _checkInTime.format(context),
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+
+                                  // Tipo de registro
+                                  const Text(
+                                    'Tipo de Registro *',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _isLoadingReasons
+                                      ? const Center(
+                                          child: Padding(
+                                            padding: EdgeInsets.all(8.0),
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                        )
+                                      : DropdownButtonFormField<String>(
+                                          value: _recordType,
+                                          decoration: InputDecoration(
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              borderSide: BorderSide(
+                                                color: Colors.grey.shade300,
+                                              ),
+                                            ),
+                                            prefixIcon: const Icon(
+                                              Icons.category,
+                                            ),
+                                          ),
+                                          items: _absenceReasons
+                                              .map<DropdownMenuItem<String>>((
+                                                reason,
+                                              ) {
+                                                return DropdownMenuItem<String>(
+                                                  value: reason['name'],
+                                                  child: Text(reason['name']),
+                                                );
+                                              })
+                                              .toList(),
+                                          onChanged: (value) {
+                                            if (value != null) {
+                                              setState(() {
+                                                _recordType = value;
+                                                final reason = _absenceReasons
+                                                    .firstWhere(
+                                                      (r) => r['name'] == value,
+                                                      orElse: () => {
+                                                        'requires_evidence':
+                                                            false,
+                                                      },
+                                                    );
+                                                _requiresEvidence =
+                                                    reason['requires_evidence'] ??
+                                                    false;
+                                              });
+                                            }
+                                          },
+                                        ),
+                                  const SizedBox(height: 20),
+
+                                  // Selector de Archivo (Condicional)
+                                  if (_requiresEvidence ||
+                                      _evidenceFilePath != null) ...[
+                                    Text(
+                                      'Evidencia / Archivo ${_requiresEvidence ? "*" : "(Opcional)"}',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    InkWell(
+                                      onTap: _pickFile,
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color:
+                                                _requiresEvidence &&
+                                                    _evidenceFilePath == null
+                                                ? Colors.red.shade300
+                                                : Colors.grey.shade300,
+                                            style: BorderStyle.solid,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          color: Colors.grey.shade50,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              _evidenceFilePath != null
+                                                  ? Icons.check_circle
+                                                  : Icons.upload_file,
+                                              color: _evidenceFilePath != null
+                                                  ? Colors.green
+                                                  : Colors.grey,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                _evidenceFileName ??
+                                                    'Seleccionar archivo (PDF, Imagen)',
+                                                style: TextStyle(
+                                                  color:
+                                                      _evidenceFileName != null
+                                                      ? Colors.black
+                                                      : Colors.grey.shade600,
+                                                  fontWeight:
+                                                      _evidenceFileName != null
+                                                      ? FontWeight.w500
+                                                      : FontWeight.normal,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            if (_evidenceFilePath != null)
+                                              IconButton(
+                                                icon: const Icon(
+                                                  Icons.close,
+                                                  color: Colors.grey,
+                                                ),
+                                                onPressed: () {
+                                                  setState(() {
+                                                    _evidenceFilePath = null;
+                                                    _evidenceFileName = null;
+                                                  });
+                                                },
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    if (_requiresEvidence &&
+                                        _evidenceFilePath == null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          top: 4,
+                                          left: 12,
+                                        ),
+                                        child: Text(
+                                          'Es obligatorio adjuntar evidencia para este motivo',
+                                          style: TextStyle(
+                                            color: Colors.red.shade700,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    const SizedBox(height: 20),
+                                  ],
+
+                                  // Notas
+                                  const Text(
+                                    'Notas (Opcional)',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextFormField(
+                                    controller: _notesController,
+                                    maxLines: 3,
+                                    decoration: InputDecoration(
+                                      hintText:
+                                          'Agregue notas o comentarios...',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
+                                      prefixIcon: const Icon(Icons.note),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 32),
+
+                                  // Botón de envío
+                                  ElevatedButton(
+                                    onPressed: _submitting ? null : _submitForm,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF2563EB),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 2,
+                                    ),
+                                    child: _submitting
+                                        ? const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Text(
+                                            'Registrar Asistencia',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                  ),
+                                  // Espacio extra para scroll
+                                  const SizedBox(height: 40),
+                                ],
                               ),
                             ),
-                    ),
-                  ],
+                          ),
+                  ),
                 ),
-              ),
+              ],
             ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -48,185 +48,310 @@ class TeamScreen extends ConsumerWidget {
     if (!isSupervisor) {
       return Scaffold(
         backgroundColor: Colors.white,
-        appBar: AppBar(
-          title: const Text('Mi Equipo'),
-          backgroundColor: const Color(0xFF2563EB),
-          foregroundColor: Colors.white,
-        ),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              Text('No tienes permisos para ver esta sección.'),
-              Text(
-                'Solo personal de Gente y Gestión.',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
+        body: Stack(
+          children: [
+            Container(
+              height: 120,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(32),
+                  bottomRight: Radius.circular(32),
+                ),
               ),
-            ],
-          ),
+            ),
+            SafeArea(
+              child: Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Center(
+                      child: Text(
+                        'Mi Equipo',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.lock_outline,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text('No tienes permisos para ver esta sección.'),
+                          Text(
+                            'Solo personal de Gente y Gestión.',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       );
     }
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Mi Equipo'),
-        backgroundColor: const Color(0xFF2563EB),
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.invalidate(teamAttendanceProvider),
+      body: Stack(
+        children: [
+          // 1. Header Background
+          Container(
+            height: 150,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
+              ),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(32),
+                bottomRight: Radius.circular(32),
+              ),
+            ),
+          ),
+
+          // 2. Content
+          SafeArea(
+            child: Column(
+              children: [
+                // AppBar Custom
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Mi Equipo',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, color: Colors.white),
+                        onPressed: () => ref.invalidate(teamAttendanceProvider),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Expanded(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(24),
+                        topRight: Radius.circular(24),
+                      ),
+                    ),
+                    child: teamAsync.when(
+                      data: (team) {
+                        if (team.isEmpty) {
+                          return const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.people_outline,
+                                  size: 64,
+                                  color: Colors.grey,
+                                ),
+                                SizedBox(height: 16),
+                                Text(
+                                  'No tienes empleados asignados o no hay datos.',
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        // Lógica de filtrado
+                        final filteredTeam = team.where((member) {
+                          final isLate = member['is_late'] == true;
+                          final isAbsent =
+                              member['record_type'] == 'INASISTENCIA' ||
+                              member['record_type'] == 'AUSENCIA';
+                          final hasCheckIn = member['check_in'] != null;
+
+                          // Puntual: Tiene check-in y NO es tarde
+                          final isPuntual = hasCheckIn && !isLate;
+
+                          // Tardanza: Es tarde (con o sin check-in, aunque usualmente con check-in)
+                          final isTardanza = isLate;
+
+                          switch (currentFilter) {
+                            case 'puntuales':
+                              return isPuntual;
+                            case 'tardanzas':
+                              return isTardanza;
+                            case 'inasistencias':
+                              return isAbsent;
+                            default:
+                              return true;
+                          }
+                        }).toList();
+
+                        // Resumen de contadores (Globales, sin filtrar)
+                        final total = team.length;
+
+                        // Presentes: Tienen check_in (incluye puntuales y tardanzas)
+                        final presentes = team
+                            .where((e) => e['check_in'] != null)
+                            .length;
+
+                        // Pendientes: No tienen check_in Y no son inasistencia
+                        final pendientes = team
+                            .where(
+                              (e) =>
+                                  e['check_in'] == null &&
+                                  e['record_type'] != 'INASISTENCIA' &&
+                                  e['record_type'] != 'AUSENCIA',
+                            )
+                            .length;
+
+                        // Ausentes: Son inasistencia explícita
+                        final ausentes = team
+                            .where(
+                              (e) =>
+                                  e['record_type'] == 'INASISTENCIA' ||
+                                  e['record_type'] == 'AUSENCIA',
+                            )
+                            .length;
+
+                        return Column(
+                          children: [
+                            // Header con métricas
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(24),
+                                  topRight: Radius.circular(24),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
+                                children: [
+                                  _buildStat(
+                                    'Total',
+                                    total.toString(),
+                                    Colors.blue,
+                                  ),
+                                  _buildStat(
+                                    'Presentes',
+                                    presentes.toString(),
+                                    Colors.green,
+                                  ),
+                                  _buildStat(
+                                    'Pendientes',
+                                    pendientes.toString(),
+                                    Colors.orange,
+                                  ),
+                                  _buildStat(
+                                    'Ausentes',
+                                    ausentes.toString(),
+                                    Colors.red,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Divider(height: 1),
+
+                            // Filtros
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              child: Row(
+                                children: [
+                                  _FilterChip(
+                                    label: 'Todos',
+                                    value: 'todos',
+                                    groupValue: currentFilter,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _FilterChip(
+                                    label: 'Puntuales',
+                                    value: 'puntuales',
+                                    groupValue: currentFilter,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _FilterChip(
+                                    label: 'Tardanzas',
+                                    value: 'tardanzas',
+                                    groupValue: currentFilter,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _FilterChip(
+                                    label: 'Inasistencias',
+                                    value: 'inasistencias',
+                                    groupValue: currentFilter,
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Lista de empleados filtrada
+                            Expanded(
+                              child: filteredTeam.isEmpty
+                                  ? const Center(
+                                      child: Text(
+                                        'No hay registros con este filtro',
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      padding: const EdgeInsets.all(16),
+                                      itemCount: filteredTeam.length,
+                                      itemBuilder: (context, index) {
+                                        final member = filteredTeam[index];
+                                        return _buildMemberCard(
+                                          context,
+                                          member,
+                                        );
+                                      },
+                                    ),
+                            ),
+                          ],
+                        );
+                      },
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
+                      error: (err, stack) => Center(child: Text('Error: $err')),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
-      ),
-      body: teamAsync.when(
-        data: (team) {
-          if (team.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.people_outline, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('No tienes empleados asignados o no hay datos.'),
-                ],
-              ),
-            );
-          }
-
-          // Lógica de filtrado
-          final filteredTeam = team.where((member) {
-            final isLate = member['is_late'] == true;
-            final isAbsent =
-                member['record_type'] == 'INASISTENCIA' ||
-                member['record_type'] == 'AUSENCIA';
-            final hasCheckIn = member['check_in'] != null;
-
-            // Puntual: Tiene check-in y NO es tarde
-            final isPuntual = hasCheckIn && !isLate;
-
-            // Tardanza: Es tarde (con o sin check-in, aunque usualmente con check-in)
-            final isTardanza = isLate;
-
-            switch (currentFilter) {
-              case 'puntuales':
-                return isPuntual;
-              case 'tardanzas':
-                return isTardanza;
-              case 'inasistencias':
-                return isAbsent;
-              default:
-                return true;
-            }
-          }).toList();
-
-          // Resumen de contadores (Globales, sin filtrar)
-          final total = team.length;
-
-          // Presentes: Tienen check_in (incluye puntuales y tardanzas)
-          final presentes = team.where((e) => e['check_in'] != null).length;
-
-          // Pendientes: No tienen check_in Y no son inasistencia
-          final pendientes = team
-              .where(
-                (e) =>
-                    e['check_in'] == null &&
-                    e['record_type'] != 'INASISTENCIA' &&
-                    e['record_type'] != 'AUSENCIA',
-              )
-              .length;
-
-          // Ausentes: Son inasistencia explícita
-          final ausentes = team
-              .where(
-                (e) =>
-                    e['record_type'] == 'INASISTENCIA' ||
-                    e['record_type'] == 'AUSENCIA',
-              )
-              .length;
-
-          return Column(
-            children: [
-              // Header con métricas
-              Container(
-                padding: const EdgeInsets.all(16),
-                color: Colors.grey.shade50,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildStat('Total', total.toString(), Colors.blue),
-                    _buildStat('Presentes', presentes.toString(), Colors.green),
-                    _buildStat(
-                      'Pendientes',
-                      pendientes.toString(),
-                      Colors.orange,
-                    ),
-                    _buildStat('Ausentes', ausentes.toString(), Colors.red),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-
-              // Filtros
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Row(
-                  children: [
-                    _FilterChip(
-                      label: 'Todos',
-                      value: 'todos',
-                      groupValue: currentFilter,
-                    ),
-                    const SizedBox(width: 8),
-                    _FilterChip(
-                      label: 'Puntuales',
-                      value: 'puntuales',
-                      groupValue: currentFilter,
-                    ),
-                    const SizedBox(width: 8),
-                    _FilterChip(
-                      label: 'Tardanzas',
-                      value: 'tardanzas',
-                      groupValue: currentFilter,
-                    ),
-                    const SizedBox(width: 8),
-                    _FilterChip(
-                      label: 'Inasistencias',
-                      value: 'inasistencias',
-                      groupValue: currentFilter,
-                    ),
-                  ],
-                ),
-              ),
-
-              // Lista de empleados filtrada
-              Expanded(
-                child: filteredTeam.isEmpty
-                    ? const Center(
-                        child: Text('No hay registros con este filtro'),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: filteredTeam.length,
-                        itemBuilder: (context, index) {
-                          final member = filteredTeam[index];
-                          return _buildMemberCard(context, member);
-                        },
-                      ),
-              ),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('Error: $err')),
       ),
     );
   }

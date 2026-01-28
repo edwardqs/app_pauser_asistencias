@@ -26,6 +26,16 @@ class RequestsRepository {
     }
   }
 
+  /// Escucha las solicitudes del empleado en tiempo real
+  Stream<List<Map<String, dynamic>>> watchMyRequests(String employeeId) {
+    return _supabase
+        .from('vacation_requests')
+        .stream(primaryKey: ['id'])
+        .eq('employee_id', employeeId)
+        .order('created_at', ascending: false)
+        .map((list) => List<Map<String, dynamic>>.from(list));
+  }
+
   /// Crea una nueva solicitud (Vacaciones, Permisos, Licencias)
   Future<void> createRequest({
     required String employeeId,

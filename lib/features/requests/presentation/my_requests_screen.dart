@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/requests/data/requests_repository.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -526,8 +527,8 @@ class _RequestsHistory extends ConsumerWidget {
       );
     }
 
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: ref.read(requestsRepositoryProvider).getMyRequests(employeeId),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: ref.read(requestsRepositoryProvider).watchMyRequests(employeeId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -559,46 +560,126 @@ class _RequestsHistory extends ConsumerWidget {
             final req = requests[index];
             final status = req['status'] ?? 'PENDIENTE';
             final color = _getStatusColor(status);
+            final isApproved = status == 'APROBADO';
 
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: color.withOpacity(0.1),
-                  child: Icon(_getStatusIcon(status), color: color),
-                ),
-                title: Text(
-                  _extractType(
-                    req['notes'],
-                  ), // Extraer tipo del texto si es posible
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: color.withOpacity(0.3), width: 1),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(4.0),
+                child: Column(
                   children: [
-                    const SizedBox(height: 4),
-                    Text('${req['start_date']} - ${req['end_date']}'),
-                    Text('${req['total_days']} días'),
-                  ],
-                ),
-                trailing: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: color.withOpacity(0.5)),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
+                    ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: color.withOpacity(0.1),
+                        child: Icon(_getStatusIcon(status), color: color),
+                      ),
+                      title: Text(
+                        req['request_type'] ?? 'SOLICITUD',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text('${req['start_date']} - ${req['end_date']}'),
+                          Text('${req['total_days']} días'),
+                          if (req['notes'] != null)
+                            Text(
+                              req['notes'],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                        ],
+                      ),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: color.withOpacity(0.5)),
+                        ),
+                        child: Text(
+                          status,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    if (isApproved) ...[
+                      const Divider(),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              final pdfUrl = req['pdf_url'];
+                              if (pdfUrl != null &&
+                                  pdfUrl.toString().isNotEmpty) {
+                                final uri = Uri.parse(pdfUrl);
+                                try {
+                                  // Intentar abrir con navegador externo o app de PDF predeterminada
+                                  if (!await launchUrl(
+                                    uri,
+                                    mode: LaunchMode.externalApplication,
+                                  )) {
+                                    // Fallback: Intentar en Webview (PlatformDefault) si falla
+                                    if (!await launchUrl(
+                                      uri,
+                                      mode: LaunchMode.platformDefault,
+                                    )) {
+                                      throw 'No se pudo abrir el enlace';
+                                    }
+                                  }
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error al abrir PDF: $e'),
+                                    ),
+                                  );
+                                }
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'El PDF aún no se ha generado. Espere unos momentos o contacte a RRHH.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.download, size: 18),
+                            label: const Text('Descargar Papeleta (PDF)'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue.shade50,
+                              foregroundColor: Colors.blue.shade800,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             );

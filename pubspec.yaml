@@ -46,6 +46,8 @@ dependencies:
   analog_clock: ^0.1.1
   file_picker: ^10.3.8
   url_launcher: ^6.3.2
+  pdf: ^3.11.3
+  printing: ^5.14.2
 
 dev_dependencies:
   flutter_test:

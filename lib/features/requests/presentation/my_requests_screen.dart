@@ -1,11 +1,17 @@
+// my_requests_screen.dart - VERSIÓN CORREGIDA SIN ERRORES
+// Reemplaza TODO el contenido de tu archivo actual con este código
+
 import 'dart:io';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/requests/data/requests_repository.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
 
 class MyRequestsScreen extends ConsumerStatefulWidget {
   const MyRequestsScreen({super.key});
@@ -33,10 +39,9 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // Fondo general blanco
+      backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // 1. Header Background (Más alto para TabBar)
           Container(
             height: 200,
             decoration: const BoxDecoration(
@@ -51,12 +56,9 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen>
               ),
             ),
           ),
-
-          // 2. Content
           SafeArea(
             child: Column(
               children: [
-                // Title
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   child: Center(
@@ -70,8 +72,6 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen>
                     ),
                   ),
                 ),
-
-                // TabBar Custom
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Container(
@@ -100,10 +100,7 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen>
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 24),
-
-                // TabBarView Content
                 Expanded(
                   child: Container(
                     decoration: const BoxDecoration(
@@ -210,7 +207,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
             backgroundColor: Colors.green,
           ),
         );
-        // Limpiar formulario
         setState(() {
           _startDate = null;
           _endDate = null;
@@ -232,7 +228,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
 
   @override
   Widget build(BuildContext context) {
-    // Obtener datos del usuario desde StorageService
     final storage = ref.watch(storageServiceProvider);
     final fullName = storage.fullName ?? 'Empleado Desconocido';
     final dni = storage.dni ?? '---';
@@ -245,7 +240,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // SECCIÓN B: DATOS DEL TRABAJADOR (Read-Only Header)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -279,8 +273,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
               ),
             ),
             const SizedBox(height: 24),
-
-            // SECCIÓN C: MOTIVO (Tipo de Solicitud)
             const Text('MOTIVO', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
@@ -294,8 +286,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
               onChanged: (val) => setState(() => _selectedType = val!),
             ),
             const SizedBox(height: 20),
-
-            // FECHAS (Salida y Retorno)
             Row(
               children: [
                 Expanded(
@@ -303,7 +293,7 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'FECHA DE SALIDA', // Label exacto de la papeleta
+                        'FECHA DE SALIDA',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
@@ -317,8 +307,9 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
                               const Duration(days: 365),
                             ),
                           );
-                          if (picked != null)
+                          if (picked != null) {
                             setState(() => _startDate = picked);
+                          }
                         },
                         child: InputDecorator(
                           decoration: const InputDecoration(
@@ -341,7 +332,7 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'FECHA DE RETORNO', // Label exacto de la papeleta
+                        'FECHA DE RETORNO',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
@@ -356,7 +347,9 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
                               const Duration(days: 365),
                             ),
                           );
-                          if (picked != null) setState(() => _endDate = picked);
+                          if (picked != null) {
+                            setState(() => _endDate = picked);
+                          }
                         },
                         child: InputDecorator(
                           decoration: const InputDecoration(
@@ -376,8 +369,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
               ],
             ),
             const SizedBox(height: 20),
-
-            // Motivo (Detallado)
             const Text(
               'Motivo / Justificación',
               style: TextStyle(fontWeight: FontWeight.bold),
@@ -395,9 +386,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
                   : null,
             ),
             const SizedBox(height: 20),
-
-            // Adjunto (Simulando Papeleta Física o Sustento)
-            // Solo mostrar si NO es vacaciones
             if (_selectedType != 'VACACIONES') ...[
               const Text(
                 'Adjuntar Sustento (Obligatorio)',
@@ -455,8 +443,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
             ] else ...[
               const SizedBox(height: 32),
             ],
-
-            // Botón Enviar
             ElevatedButton(
               onPressed: _isLoading ? null : _submit,
               style: ElevatedButton.styleFrom(
@@ -515,6 +501,111 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
 
 class _RequestsHistory extends ConsumerWidget {
   const _RequestsHistory();
+
+  // ✅ FUNCIÓN CORREGIDA - TODOS LOS PARÁMETROS DEFINIDOS
+  Future<void> _downloadPDF(
+    BuildContext context,
+    String pdfUrl,
+    String fileName,
+  ) async {
+    try {
+      // 1. Verificar permisos de almacenamiento
+      if (Platform.isAndroid) {
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        // En Android 13+ (SDK 33), no necesitamos permisos para escribir en Descargas
+        // usando el directorio público, o los permisos son diferentes (READ_MEDIA_*)
+        // por lo que saltamos la solicitud de Permission.storage que siempre falla.
+        if (androidInfo.version.sdkInt < 33) {
+          final permissionStatus = await Permission.storage.request();
+          if (!permissionStatus.isGranted) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Permisos de almacenamiento denegados'),
+                ),
+              );
+            }
+            return;
+          }
+        }
+      }
+
+      // 2. Mostrar indicador de descarga
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text('Descargando papeleta...'),
+              ],
+            ),
+            duration: Duration(seconds: 30),
+          ),
+        );
+      }
+
+      // 3. Descargar archivo
+      final response = await http.get(Uri.parse(pdfUrl));
+
+      if (response.statusCode != 200) {
+        throw Exception('Error al descargar: ${response.statusCode}');
+      }
+
+      // 4. Guardar archivo
+      Directory? directory;
+
+      if (Platform.isAndroid) {
+        directory = Directory('/storage/emulated/0/Download');
+        if (!await directory.exists()) {
+          directory = await getExternalStorageDirectory();
+        }
+      } else if (Platform.isIOS) {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      if (directory == null) {
+        throw Exception('No se pudo acceder al directorio de almacenamiento');
+      }
+
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
+      await file.writeAsBytes(response.bodyBytes);
+
+      // 5. Notificar éxito
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'PDF guardado en: ${Platform.isAndroid ? "Descargas" : "Documentos"}',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error descargando PDF: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al descargar: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -629,48 +720,44 @@ class _RequestsHistory extends ConsumerWidget {
                         child: SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
+                            // ✅ LLAMADA CORREGIDA CON LOS 3 ARGUMENTOS
                             onPressed: () async {
                               final pdfUrl = req['pdf_url'];
                               if (pdfUrl != null &&
                                   pdfUrl.toString().isNotEmpty) {
-                                final uri = Uri.parse(pdfUrl);
-                                try {
-                                  // Intentar abrir con navegador externo o app de PDF predeterminada
-                                  if (!await launchUrl(
-                                    uri,
-                                    mode: LaunchMode.externalApplication,
-                                  )) {
-                                    // Fallback: Intentar en Webview (PlatformDefault) si falla
-                                    if (!await launchUrl(
-                                      uri,
-                                      mode: LaunchMode.platformDefault,
-                                    )) {
-                                      throw 'No se pudo abrir el enlace';
-                                    }
-                                  }
-                                } catch (e) {
+                                final requestType =
+                                    req['request_type'] ?? 'Solicitud';
+                                final cleanType = requestType.replaceAll(
+                                  ' ',
+                                  '_',
+                                );
+                                final timestamp =
+                                    DateTime.now().millisecondsSinceEpoch;
+                                final fileName =
+                                    'Papeleta_${cleanType}_$timestamp.pdf';
+
+                                // Llamada correcta con 3 parámetros: context, pdfUrl, fileName
+                                await _downloadPDF(context, pdfUrl, fileName);
+                              } else {
+                                if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Error al abrir PDF: $e'),
+                                    const SnackBar(
+                                      content: Text(
+                                        'El PDF aún no está disponible. Contacte a RRHH.',
+                                      ),
+                                      backgroundColor: Colors.orange,
                                     ),
                                   );
                                 }
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'El PDF aún no se ha generado. Espere unos momentos o contacte a RRHH.',
-                                    ),
-                                  ),
-                                );
                               }
                             },
                             icon: const Icon(Icons.download, size: 18),
                             label: const Text('Descargar Papeleta (PDF)'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue.shade50,
-                              foregroundColor: Colors.blue.shade800,
-                              elevation: 0,
+                              backgroundColor: Colors.blue.shade600,
+                              foregroundColor: Colors.white,
+                              elevation: 2,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -711,16 +798,5 @@ class _RequestsHistory extends ConsumerWidget {
       default:
         return Icons.access_time;
     }
-  }
-
-  String _extractType(String? notes) {
-    if (notes == null) return 'SOLICITUD';
-    if (notes.startsWith('[')) {
-      final end = notes.indexOf(']');
-      if (end != -1) {
-        return notes.substring(1, end);
-      }
-    }
-    return 'SOLICITUD';
   }
 }

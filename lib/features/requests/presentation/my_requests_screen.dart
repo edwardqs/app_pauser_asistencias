@@ -4,14 +4,10 @@
 import 'dart:io';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/requests/data/requests_repository.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:http/http.dart' as http;
 
 class MyRequestsScreen extends ConsumerStatefulWidget {
   const MyRequestsScreen({super.key});
@@ -502,111 +498,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
 class _RequestsHistory extends ConsumerWidget {
   const _RequestsHistory();
 
-  // ✅ FUNCIÓN CORREGIDA - TODOS LOS PARÁMETROS DEFINIDOS
-  Future<void> _downloadPDF(
-    BuildContext context,
-    String pdfUrl,
-    String fileName,
-  ) async {
-    try {
-      // 1. Verificar permisos de almacenamiento
-      if (Platform.isAndroid) {
-        final androidInfo = await DeviceInfoPlugin().androidInfo;
-        // En Android 13+ (SDK 33), no necesitamos permisos para escribir en Descargas
-        // usando el directorio público, o los permisos son diferentes (READ_MEDIA_*)
-        // por lo que saltamos la solicitud de Permission.storage que siempre falla.
-        if (androidInfo.version.sdkInt < 33) {
-          final permissionStatus = await Permission.storage.request();
-          if (!permissionStatus.isGranted) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Permisos de almacenamiento denegados'),
-                ),
-              );
-            }
-            return;
-          }
-        }
-      }
-
-      // 2. Mostrar indicador de descarga
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                ),
-                SizedBox(width: 12),
-                Text('Descargando papeleta...'),
-              ],
-            ),
-            duration: Duration(seconds: 30),
-          ),
-        );
-      }
-
-      // 3. Descargar archivo
-      final response = await http.get(Uri.parse(pdfUrl));
-
-      if (response.statusCode != 200) {
-        throw Exception('Error al descargar: ${response.statusCode}');
-      }
-
-      // 4. Guardar archivo
-      Directory? directory;
-
-      if (Platform.isAndroid) {
-        directory = Directory('/storage/emulated/0/Download');
-        if (!await directory.exists()) {
-          directory = await getExternalStorageDirectory();
-        }
-      } else if (Platform.isIOS) {
-        directory = await getApplicationDocumentsDirectory();
-      }
-
-      if (directory == null) {
-        throw Exception('No se pudo acceder al directorio de almacenamiento');
-      }
-
-      final filePath = '${directory.path}/$fileName';
-      final file = File(filePath);
-      await file.writeAsBytes(response.bodyBytes);
-
-      // 5. Notificar éxito
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'PDF guardado en: ${Platform.isAndroid ? "Descargas" : "Documentos"}',
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error descargando PDF: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al descargar: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final storage = ref.watch(storageServiceProvider);
@@ -712,59 +603,7 @@ class _RequestsHistory extends ConsumerWidget {
                     ),
                     if (isApproved) ...[
                       const Divider(),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            // ✅ LLAMADA CORREGIDA CON LOS 3 ARGUMENTOS
-                            onPressed: () async {
-                              final pdfUrl = req['pdf_url'];
-                              if (pdfUrl != null &&
-                                  pdfUrl.toString().isNotEmpty) {
-                                final requestType =
-                                    req['request_type'] ?? 'Solicitud';
-                                final cleanType = requestType.replaceAll(
-                                  ' ',
-                                  '_',
-                                );
-                                final timestamp =
-                                    DateTime.now().millisecondsSinceEpoch;
-                                final fileName =
-                                    'Papeleta_${cleanType}_$timestamp.pdf';
-
-                                // Llamada correcta con 3 parámetros: context, pdfUrl, fileName
-                                await _downloadPDF(context, pdfUrl, fileName);
-                              } else {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'El PDF aún no está disponible. Contacte a RRHH.',
-                                      ),
-                                      backgroundColor: Colors.orange,
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                            icon: const Icon(Icons.download, size: 18),
-                            label: const Text('Descargar Papeleta (PDF)'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue.shade600,
-                              foregroundColor: Colors.white,
-                              elevation: 2,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                      // El flujo de descarga ha sido eliminado por solicitud.
                     ],
                   ],
                 ),

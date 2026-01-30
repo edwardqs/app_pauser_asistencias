@@ -11,6 +11,22 @@ class AttendanceRepository {
 
   AttendanceRepository(this._supabase);
 
+  // Método actualizado para usar el nuevo RPC que devuelve estado completo (Asistencia + Vacaciones)
+  Future<Map<String, dynamic>> getEmployeeDayStatus(String employeeId) async {
+    try {
+      final response = await _supabase.rpc(
+        'get_employee_day_status',
+        params: {'p_employee_id': employeeId},
+      );
+      return Map<String, dynamic>.from(response);
+    } catch (e) {
+      // Fallback simple si falla el RPC: Solo asistencia de hoy
+      print('Error en getEmployeeDayStatus: $e');
+      final today = await getTodayAttendance(employeeId);
+      return {'attendance': today, 'vacation': null, 'is_on_vacation': false};
+    }
+  }
+
   Future<Map<String, dynamic>?> getTodayAttendance(String employeeId) async {
     // CAMBIO: Obtenemos el registro que coincida explícitamente con la fecha actual de Perú
     // Esto asegura que la app móvil sepa si "hoy" ya marcó o no, independientemente de la hora UTC.

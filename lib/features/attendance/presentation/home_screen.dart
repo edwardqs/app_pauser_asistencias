@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:analog_clock/analog_clock.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/attendance/data/attendance_repository.dart';
+import 'package:app_asistencias_pauser/features/requests/data/requests_repository.dart';
+import 'package:app_asistencias_pauser/features/requests/presentation/notifications_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -11,15 +12,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
-// 1. Provider para obtener los datos de asistencia (READ-ONLY State)
-final attendanceDataProvider = FutureProvider.family
+// Provider for unread count
+final unreadNotificationCountProvider = StreamProvider.family
+    .autoDispose<int, String>((ref, employeeId) {
+      return ref
+          .watch(requestsRepositoryProvider)
+          .watchNotifications(employeeId)
+          .map((list) => list.where((n) => n['is_read'] == false).length);
+    });
+
+// 1. Provider para obtener el estado completo (Asistencia + Vacaciones)
+final employeeStatusProvider = FutureProvider.family
     .autoDispose<Map<String, dynamic>?, String?>((ref, employeeId) async {
       if (employeeId == null) return null;
-      // Pequeño delay artificial para asegurar que la UI responda bien a cambios rápidos
-      // await Future.delayed(Duration.zero);
       return ref
           .watch(attendanceRepositoryProvider)
-          .getTodayAttendance(employeeId);
+          .getEmployeeDayStatus(employeeId);
     });
 
 // 2. Provider para el estado de carga de la acción (WRITE State)
@@ -107,7 +115,7 @@ class AttendanceLogic {
           );
         }
         // Refrescar estado
-        ref.invalidate(attendanceDataProvider(employeeId));
+        ref.invalidate(employeeStatusProvider(employeeId));
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -189,49 +197,16 @@ class AttendanceLogic {
         // (ej. ya completó el día), attendanceRepository.checkIn podría fallar o crear duplicado si no hay unique constraint.
         // Pero aquí confiamos en que isCheckedIn es false.
 
-        // Check In logic (UPDATED)
-        final now = DateTime.now();
-        // Hora límite para TARDANZA: 07:00 (7 AM)
-        final tardanzaLimit = DateTime(now.year, now.month, now.day, 7, 0);
-
-        // Hora límite para CIERRE/INASISTENCIA: 18:00 (6 PM)
-        final absenceLimit = DateTime(now.year, now.month, now.day, 18, 0);
-
-        final isLate = now.isAfter(tardanzaLimit);
-        final isAbsenceTime = now.isAfter(absenceLimit);
+        // Check In logic (UPDATED - Simplified Flow)
+        // Ya no solicitamos motivo ni evidencia para tardanzas o inasistencias.
+        // El sistema captura automáticamente la hora y ubicación.
 
         String? lateReason;
         File? evidenceFile;
 
-        if (isLate || isAbsenceTime) {
-          if (context.mounted) {
-            ref.read(actionLoadingNotifierProvider).value = false;
-
-            final title = isAbsenceTime
-                ? 'Justificar Inasistencia'
-                : 'Ingreso Tardío';
-            final message = isAbsenceTime
-                ? 'Ha pasado el límite de registro (6:00 PM). Debes justificar tu inasistencia.'
-                : 'Estás marcando después de las 7:00 AM. Se registrará como TARDANZA.';
-
-            final result = await showDialog<Map<String, dynamic>>(
-              context: context,
-              builder: (context) => JustificationDialog(
-                title: title,
-                message: message,
-                isEvidenceRequired: true,
-              ),
-            );
-
-            if (result == null) {
-              return; // Cancelled
-            }
-
-            lateReason = result['reason'];
-            evidenceFile = result['file'];
-
-            ref.read(actionLoadingNotifierProvider).value = true;
-          }
+        // Procedemos directamente al check-in
+        if (context.mounted) {
+          ref.read(actionLoadingNotifierProvider).value = true;
         }
 
         await ref
@@ -240,8 +215,8 @@ class AttendanceLogic {
               employeeId: employeeId,
               lat: position.latitude,
               lng: position.longitude,
-              lateReason: lateReason,
-              evidenceFile: evidenceFile,
+              lateReason: lateReason, // null
+              evidenceFile: evidenceFile, // null
             );
 
         if (context.mounted) {
@@ -255,7 +230,7 @@ class AttendanceLogic {
       }
 
       // Refresh provider
-      ref.invalidate(attendanceDataProvider(employeeId));
+      ref.invalidate(employeeStatusProvider(employeeId));
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -291,19 +266,25 @@ class HomeScreen extends ConsumerWidget {
     // Watch data
     // Use select to watch only specific parts if needed, or watch the whole provider
     // IMPORTANT: invalidate this provider on logout to prevent stale data
-    final attendanceAsync = ref.watch(attendanceDataProvider(employeeId));
+    final employeeStatusAsync = ref.watch(employeeStatusProvider(employeeId));
     final loadingNotifier = ref.watch(actionLoadingNotifierProvider);
 
     final positionTitle = storage.position ?? 'Empleado';
     final profilePic = storage.profilePicture;
 
     return Scaffold(
-      body: attendanceAsync.when(
-        data: (attendance) {
+      body: employeeStatusAsync.when(
+        data: (statusData) {
+          // Extraer datos del nuevo formato
+          final attendance = statusData?['attendance'] as Map<String, dynamic>?;
+          final vacation = statusData?['vacation'] as Map<String, dynamic>?;
+          final isOnVacation = statusData?['is_on_vacation'] as bool? ?? false;
+
           // Lógica de Horario Estricto
           final now = DateTime.now();
           // Usamos la misma cadena de fecha que se usa en la query del repositorio
-          final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+          final todayStr =
+              "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
           // Validar si el registro recuperado es de hoy
           // La query ya filtra por fecha exacta, así que si attendance != null, ES de hoy.
@@ -371,7 +352,7 @@ class HomeScreen extends ConsumerWidget {
                   .registerUnjustifiedAbsence(employeeId!)
                   .then((_) {
                     // Refrescar para traer el nuevo registro de la BD
-                    ref.invalidate(attendanceDataProvider(employeeId));
+                    ref.invalidate(employeeStatusProvider(employeeId));
                   });
             });
           }
@@ -394,405 +375,573 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
 
-              // Main Content
+              // Main Content with RefreshIndicator
               SafeArea(
-                child: Column(
-                  children: [
-                    // Top Bar: Welcome & Profile
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                      child: Row(
-                        children: [
-                          Container(
+                child: RefreshIndicator(
+                  onRefresh: () async {
+                    if (employeeId != null) {
+                      // Invalidar provider para recargar datos
+                      ref.invalidate(employeeStatusProvider(employeeId));
+                      // Esperar a que se complete la recarga para detener el indicador
+                      try {
+                        await ref.read(
+                          employeeStatusProvider(employeeId).future,
+                        );
+                      } catch (_) {
+                        // Ignorar errores en el refresh visual
+                      }
+                    }
+                  },
+                  child: CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      // Top Bar: Welcome & Profile
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                          child: Row(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.1,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: CircleAvatar(
+                                  radius: 28,
+                                  backgroundColor: Colors.white,
+                                  backgroundImage: profilePic != null
+                                      ? NetworkImage(profilePic)
+                                      : null,
+                                  child: profilePic == null
+                                      ? const Icon(
+                                          Icons.person,
+                                          color: Color(0xFF2563EB),
+                                          size: 30,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Hola,',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.9,
+                                        ),
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      fullName,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Botón de Notificaciones
+                              Consumer(
+                                builder: (context, ref, _) {
+                                  final unreadCountAsync = employeeId != null
+                                      ? ref.watch(
+                                          unreadNotificationCountProvider(
+                                            employeeId,
+                                          ),
+                                        )
+                                      : const AsyncValue.data(0);
+
+                                  return unreadCountAsync.when(
+                                    data: (count) {
+                                      return Stack(
+                                        children: [
+                                          IconButton(
+                                            onPressed: () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      const NotificationsScreen(),
+                                                ),
+                                              );
+                                            },
+                                            icon: const Icon(
+                                              Icons.notifications_outlined,
+                                              color: Colors.white,
+                                              size: 28,
+                                            ),
+                                          ),
+                                          if (count > 0)
+                                            Positioned(
+                                              right: 8,
+                                              top: 8,
+                                              child: Container(
+                                                padding: const EdgeInsets.all(
+                                                  4,
+                                                ),
+                                                decoration: const BoxDecoration(
+                                                  color: Colors.red,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      minWidth: 16,
+                                                      minHeight: 16,
+                                                    ),
+                                                child: Text(
+                                                  '$count',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      );
+                                    },
+                                    loading: () => const IconButton(
+                                      onPressed: null,
+                                      icon: Icon(
+                                        Icons.notifications_outlined,
+                                        color: Colors.white54,
+                                        size: 28,
+                                      ),
+                                    ),
+                                    error: (_, __) => const IconButton(
+                                      onPressed: null,
+                                      icon: Icon(
+                                        Icons.notifications_off_outlined,
+                                        color: Colors.white54,
+                                        size: 28,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      SliverToBoxAdapter(child: const SizedBox(height: 30)),
+
+                      // Clock & Date Card
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Container(
+                            padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10),
                                 ),
                               ],
                             ),
-                            child: CircleAvatar(
-                              radius: 28,
-                              backgroundColor: Colors.white,
-                              backgroundImage: profilePic != null
-                                  ? NetworkImage(profilePic)
-                                  : null,
-                              child: profilePic == null
-                                  ? const Icon(
-                                      Icons.person,
-                                      color: Color(0xFF2563EB),
-                                      size: 30,
-                                    )
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
-                                Text(
-                                  'Hola,',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.9),
-                                    fontSize: 14,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        DateFormat(
+                                          'EEEE',
+                                          'es',
+                                        ).format(now).toUpperCase(),
+                                        style: TextStyle(
+                                          color: Colors.grey[500],
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        DateFormat('d MMMM', 'es').format(now),
+                                        style: const TextStyle(
+                                          color: Color(0xFF1E293B),
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade50,
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          positionTitle.toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Color(0xFF2563EB),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                Text(
-                                  fullName, // Nombre completo (Apellido y Nombre)
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize:
-                                        20, // Ajustado ligeramente para nombres largos
-                                    fontWeight: FontWeight.bold,
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade50,
+                                    shape: BoxShape.circle,
                                   ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                  child: SizedBox(
+                                    width: 60,
+                                    height: 60,
+                                    child: AnalogClock(
+                                      decoration: const BoxDecoration(
+                                        color: Colors.transparent,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      width: 60.0,
+                                      isLive: true,
+                                      hourHandColor: const Color(0xFF1E293B),
+                                      minuteHandColor: const Color(0xFF1E293B),
+                                      showSecondHand: true,
+                                      secondHandColor: const Color(0xFFEF4444),
+                                      numberColor: Colors
+                                          .transparent, // Minimalist: no numbers
+                                      showNumbers: false,
+                                      showTicks: true,
+                                      tickColor: Colors.grey.shade400,
+                                      datetime: DateTime.now(),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                          // Optional: Notification or Settings Icon
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.notifications_outlined,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 30),
-
-                    // Clock & Date Card
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
                         ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    DateFormat(
-                                      'EEEE',
-                                      'es',
-                                    ).format(now).toUpperCase(),
-                                    style: TextStyle(
-                                      color: Colors.grey[500],
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 1.2,
+                      ),
+
+                      SliverToBoxAdapter(child: const SizedBox(height: 24)),
+
+                      // Status & Action Area
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (isOnVacation) ...[
+                                // VACATION STATE (Priority High)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(32),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF0EA5E9),
+                                        Color(0xFF0284C7),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(32),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.blue.withOpacity(0.3),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      const Icon(
+                                        Icons.beach_access,
+                                        size: 64,
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        '¡MODO VACACIONES!',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      if (vacation != null) ...[
+                                        Text(
+                                          'Del ${DateFormat('d MMM').format(DateTime.parse(vacation['start_date']))} al ${DateFormat('d MMM').format(DateTime.parse(vacation['end_date']))}',
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        const Text(
+                                          'Disfruta tu descanso. No necesitas registrar asistencia.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ).animate().scale(
+                                  curve: Curves.elasticOut,
+                                  duration: 800.ms,
+                                ),
+                              ] else if (isFaltaInjustificada ||
+                                  isDayComplete ||
+                                  isCheckedIn) ...[
+                                // COMPLETED STATE
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(32),
+                                  decoration: BoxDecoration(
+                                    color: isFaltaInjustificada
+                                        ? Colors.red.shade50
+                                        : (isAbsence
+                                              ? Colors.orange.shade50
+                                              : Colors.green.shade50),
+                                    borderRadius: BorderRadius.circular(32),
+                                    border: Border.all(
+                                      color: isFaltaInjustificada
+                                          ? Colors.red.shade200
+                                          : (isAbsence
+                                                ? Colors.orange.shade200
+                                                : Colors.green.shade200),
+                                      width: 2,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    DateFormat('d MMMM', 'es').format(now),
-                                    style: const TextStyle(
-                                      color: Color(0xFF1E293B),
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        isFaltaInjustificada
+                                            ? Icons.block
+                                            : (isAbsence
+                                                  ? Icons.assignment_late
+                                                  : Icons.check_circle),
+                                        size: 64,
+                                        color: isFaltaInjustificada
+                                            ? Colors.red
+                                            : (isAbsence
+                                                  ? Colors.orange
+                                                  : Colors.green),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        isFaltaInjustificada
+                                            ? 'FALTA INJUSTIFICADA'
+                                            : (isAbsence
+                                                  ? (effectiveAttendance != null
+                                                        ? effectiveAttendance['record_type']
+                                                        : 'Ausencia Registrada')
+                                                  : '¡Jornada Iniciada!'),
+                                        style: TextStyle(
+                                          color: isFaltaInjustificada
+                                              ? Colors.red.shade800
+                                              : (isAbsence
+                                                    ? Colors.orange.shade800
+                                                    : Colors.green.shade800),
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        isFaltaInjustificada
+                                            ? 'No registraste asistencia antes de las 6:00 PM.'
+                                            : (isAbsence
+                                                  ? 'Tu reporte ha sido enviado.'
+                                                  : 'Entrada: ${lastCheckIn != null ? DateFormat('hh:mm a').format(DateTime.parse(lastCheckIn).toLocal()) : '--:--'}'),
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: isFaltaInjustificada
+                                              ? Colors.red.shade700
+                                              : (isAbsence
+                                                    ? Colors.orange.shade700
+                                                    : Colors.green.shade700),
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 4),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.shade50,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      positionTitle.toUpperCase(),
-                                      style: const TextStyle(
-                                        color: Color(0xFF2563EB),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 10,
+                                ).animate().scale(
+                                  curve: Curves.elasticOut,
+                                  duration: 800.ms,
+                                ),
+                              ] else ...[
+                                // ACTION STATE
+
+                                // Main Check-In Button
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 200,
+                                  child: ValueListenableBuilder<bool>(
+                                    valueListenable: loadingNotifier,
+                                    builder: (context, isActionLoading, child) {
+                                      return ElevatedButton(
+                                        onPressed: (isActionLoading)
+                                            ? null
+                                            : () {
+                                                if (employeeId != null) {
+                                                  AttendanceLogic(
+                                                    ref,
+                                                  ).markAttendance(
+                                                    context,
+                                                    employeeId,
+                                                  );
+                                                }
+                                              },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: isTardanza
+                                              ? const Color(0xFFEA580C)
+                                              : const Color(0xFF2563EB),
+                                          foregroundColor: Colors.white,
+                                          elevation: 10,
+                                          shadowColor:
+                                              (isTardanza
+                                                      ? Colors.orange
+                                                      : Colors.blue)
+                                                  .withValues(alpha: 0.5),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              32,
+                                            ),
+                                          ),
+                                        ),
+                                        child: isActionLoading
+                                            ? const CircularProgressIndicator(
+                                                color: Colors.white,
+                                              )
+                                            : Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    isTardanza
+                                                        ? Icons.timer_off
+                                                        : Icons.touch_app,
+                                                    size: 56,
+                                                  ),
+                                                  const SizedBox(height: 16),
+                                                  Text(
+                                                    'MARCAR ENTRADA',
+                                                    style: const TextStyle(
+                                                      fontSize: 24,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      letterSpacing: 1,
+                                                    ),
+                                                  ),
+                                                  if (isTardanza)
+                                                    const Padding(
+                                                      padding: EdgeInsets.only(
+                                                        top: 8,
+                                                      ),
+                                                      child: Text(
+                                                        'Registrando con TARDANZA',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                      );
+                                    },
+                                  ),
+                                ).animate().shimmer(
+                                  delay: 1000.ms,
+                                  duration: 1500.ms,
+                                ),
+
+                                const SizedBox(height: 24),
+
+                                // Absence Button (Secondary)
+                                if (!isSupervisor) ...[
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 56,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () {
+                                        if (employeeId != null) {
+                                          AttendanceLogic(
+                                            ref,
+                                          ).reportAbsence(context, employeeId);
+                                        }
+                                      },
+                                      icon: const Icon(Icons.sick_outlined),
+                                      label: const Text(
+                                        'REPORTAR INASISTENCIA',
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.red.shade600,
+                                        side: BorderSide(
+                                          color: Colors.red.shade200,
+                                          width: 1.5,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
+                                        textStyle: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade50,
-                                shape: BoxShape.circle,
-                              ),
-                              child: SizedBox(
-                                width: 60,
-                                height: 60,
-                                child: AnalogClock(
-                                  decoration: const BoxDecoration(
-                                    color: Colors.transparent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  width: 60.0,
-                                  isLive: true,
-                                  hourHandColor: const Color(0xFF1E293B),
-                                  minuteHandColor: const Color(0xFF1E293B),
-                                  showSecondHand: true,
-                                  secondHandColor: const Color(0xFFEF4444),
-                                  numberColor: Colors
-                                      .transparent, // Minimalist: no numbers
-                                  showNumbers: false,
-                                  showTicks: true,
-                                  tickColor: Colors.grey.shade400,
-                                  datetime: DateTime.now(),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Status & Action Area
-                    Expanded(
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (isFaltaInjustificada ||
-                                isDayComplete ||
-                                isCheckedIn) ...[
-                              // COMPLETED STATE
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(32),
-                                decoration: BoxDecoration(
-                                  color: isFaltaInjustificada
-                                      ? Colors.red.shade50
-                                      : (isAbsence
-                                            ? Colors.orange.shade50
-                                            : Colors.green.shade50),
-                                  borderRadius: BorderRadius.circular(32),
-                                  border: Border.all(
-                                    color: isFaltaInjustificada
-                                        ? Colors.red.shade200
-                                        : (isAbsence
-                                              ? Colors.orange.shade200
-                                              : Colors.green.shade200),
-                                    width: 2,
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      isFaltaInjustificada
-                                          ? Icons.block
-                                          : (isAbsence
-                                                ? Icons.assignment_late
-                                                : Icons.check_circle),
-                                      size: 64,
-                                      color: isFaltaInjustificada
-                                          ? Colors.red
-                                          : (isAbsence
-                                                ? Colors.orange
-                                                : Colors.green),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      isFaltaInjustificada
-                                          ? 'FALTA INJUSTIFICADA'
-                                          : (isAbsence
-                                                ? (effectiveAttendance != null
-                                                      ? effectiveAttendance['record_type']
-                                                      : 'Ausencia Registrada')
-                                                : '¡Jornada Iniciada!'),
-                                      style: TextStyle(
-                                        color: isFaltaInjustificada
-                                            ? Colors.red.shade800
-                                            : (isAbsence
-                                                  ? Colors.orange.shade800
-                                                  : Colors.green.shade800),
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      isFaltaInjustificada
-                                          ? 'No registraste asistencia antes de las 6:00 PM.'
-                                          : (isAbsence
-                                                ? 'Tu reporte ha sido enviado.'
-                                                : 'Entrada: ${lastCheckIn != null ? DateFormat('hh:mm a').format(DateTime.parse(lastCheckIn).toLocal()) : '--:--'}'),
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: isFaltaInjustificada
-                                            ? Colors.red.shade700
-                                            : (isAbsence
-                                                  ? Colors.orange.shade700
-                                                  : Colors.green.shade700),
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ).animate().scale(
-                                curve: Curves.elasticOut,
-                                duration: 800.ms,
-                              ),
-                            ] else ...[
-                              // ACTION STATE
-
-                              // Main Check-In Button
-                              SizedBox(
-                                width: double.infinity,
-                                height: 200,
-                                child: ValueListenableBuilder<bool>(
-                                  valueListenable: loadingNotifier,
-                                  builder: (context, isActionLoading, child) {
-                                    return ElevatedButton(
-                                      onPressed: (isActionLoading)
-                                          ? null
-                                          : () {
-                                              if (employeeId != null) {
-                                                AttendanceLogic(
-                                                  ref,
-                                                ).markAttendance(
-                                                  context,
-                                                  employeeId,
-                                                );
-                                              }
-                                            },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: isTardanza
-                                            ? const Color(0xFFEA580C)
-                                            : const Color(0xFF2563EB),
-                                        foregroundColor: Colors.white,
-                                        elevation: 10,
-                                        shadowColor:
-                                            (isTardanza
-                                                    ? Colors.orange
-                                                    : Colors.blue)
-                                                .withValues(alpha: 0.5),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            32,
-                                          ),
-                                        ),
-                                      ),
-                                      child: isActionLoading
-                                          ? const CircularProgressIndicator(
-                                              color: Colors.white,
-                                            )
-                                          : Column(
-                                              mainAxisAlignment:
-                                                  MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  isTardanza
-                                                      ? Icons.timer_off
-                                                      : Icons.touch_app,
-                                                  size: 56,
-                                                ),
-                                                const SizedBox(height: 16),
-                                                Text(
-                                                  'MARCAR ENTRADA',
-                                                  style: const TextStyle(
-                                                    fontSize: 24,
-                                                    fontWeight: FontWeight.w800,
-                                                    letterSpacing: 1,
-                                                  ),
-                                                ),
-                                                if (isTardanza)
-                                                  const Padding(
-                                                    padding: EdgeInsets.only(
-                                                      top: 8,
-                                                    ),
-                                                    child: Text(
-                                                      'Registrando con TARDANZA',
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                    );
-                                  },
-                                ),
-                              ).animate().shimmer(
-                                delay: 1000.ms,
-                                duration: 1500.ms,
-                              ),
-
-                              const SizedBox(height: 24),
-
-                              // Absence Button (Secondary)
-                              if (!isSupervisor) ...[
-                                SizedBox(
-                                  width: double.infinity,
-                                  height: 56,
-                                  child: OutlinedButton.icon(
-                                    onPressed: () {
-                                      if (employeeId != null) {
-                                        AttendanceLogic(
-                                          ref,
-                                        ).reportAbsence(context, employeeId);
-                                      }
-                                    },
-                                    icon: const Icon(Icons.sick_outlined),
-                                    label: const Text('REPORTAR INASISTENCIA'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.red.shade600,
-                                      side: BorderSide(
-                                        color: Colors.red.shade200,
-                                        width: 1.5,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      textStyle: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                  ),
-                                ),
                               ],
+                              const SizedBox(height: 20),
                             ],
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-
-                    const SizedBox(height: 20),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -815,7 +964,7 @@ class HomeScreen extends ConsumerWidget {
                 onPressed: () {
                   if (employeeId != null) {
                     // Invalidate provider to force refresh
-                    ref.invalidate(attendanceDataProvider(employeeId));
+                    ref.invalidate(employeeStatusProvider(employeeId));
                   }
                 },
                 child: const Text('Reintentar'),

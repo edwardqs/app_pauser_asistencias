@@ -18,9 +18,10 @@ class StorageService {
   static const String keyProfilePicture = 'profile_picture';
 
   final SharedPreferences _prefs;
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final SupabaseClient _supabase;
 
-  StorageService(this._prefs);
+  StorageService(this._prefs, {SupabaseClient? supabase})
+      : _supabase = supabase ?? Supabase.instance.client;
 
   static Future<StorageService> init() async {
     final prefs = await SharedPreferences.getInstance();

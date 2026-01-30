@@ -543,6 +543,7 @@ class _RequestsHistory extends ConsumerWidget {
             final status = req['status'] ?? 'PENDIENTE';
             final color = _getStatusColor(status);
             final isApproved = status == 'APROBADO';
+            final isPending = status == 'PENDIENTE';
 
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
@@ -601,7 +602,64 @@ class _RequestsHistory extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    if (isApproved) ...[
+                    if (isPending) ...[
+                      const Divider(height: 1),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder:
+                                (context) => AlertDialog(
+                                  title: const Text('Cancelar Solicitud'),
+                                  content: const Text(
+                                    '¿Estás seguro de cancelar esta solicitud?',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed:
+                                          () => Navigator.pop(context, false),
+                                      child: const Text('No'),
+                                    ),
+                                    TextButton(
+                                      onPressed:
+                                          () => Navigator.pop(context, true),
+                                      child: const Text('Sí'),
+                                    ),
+                                  ],
+                                ),
+                          );
+
+                          if (confirm == true) {
+                            try {
+                              await ref
+                                  .read(requestsRepositoryProvider)
+                                  .cancelRequest(req['id']);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Solicitud cancelada'),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
+                            }
+                          }
+                        },
+                        icon: const Icon(
+                          Icons.cancel_outlined,
+                          color: Colors.red,
+                        ),
+                        label: const Text(
+                          'CANCELAR SOLICITUD',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ] else if (isApproved) ...[
                       const Divider(),
                       // El flujo de descarga ha sido eliminado por solicitud.
                     ],

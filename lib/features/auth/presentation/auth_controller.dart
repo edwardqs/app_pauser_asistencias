@@ -83,7 +83,9 @@ class AuthController extends AsyncNotifier<void> {
 
     // Invalidate all providers that might hold user-specific state
     // This is crucial to prevent "phantom" data when switching users
-    ref.invalidate(attendanceDataProvider);
+    ref.invalidate(
+      employeeStatusProvider,
+    ); // Actualizado para usar el nuevo provider
     // Add other providers here if necessary (e.g. teamAttendanceProvider)
 
     await storage.clearSession();

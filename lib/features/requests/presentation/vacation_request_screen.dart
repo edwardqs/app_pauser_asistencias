@@ -8,7 +8,8 @@ class VacationRequestScreen extends ConsumerStatefulWidget {
   const VacationRequestScreen({super.key});
 
   @override
-  ConsumerState<VacationRequestScreen> createState() => _VacationRequestScreenState();
+  ConsumerState<VacationRequestScreen> createState() =>
+      _VacationRequestScreenState();
 }
 
 class _VacationRequestScreenState extends ConsumerState<VacationRequestScreen> {
@@ -45,7 +46,9 @@ class _VacationRequestScreenState extends ConsumerState<VacationRequestScreen> {
     if (!_formKey.currentState!.validate()) return;
     if (_totalDays <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('La fecha de fin debe ser posterior a la de inicio')),
+        const SnackBar(
+          content: Text('La fecha de fin debe ser posterior a la de inicio'),
+        ),
       );
       return;
     }
@@ -55,13 +58,15 @@ class _VacationRequestScreenState extends ConsumerState<VacationRequestScreen> {
       final employeeId = ref.read(storageServiceProvider).employeeId;
       if (employeeId == null) throw Exception('No se identificó al empleado');
 
-      await ref.read(teamRepositoryProvider).createVacationRequest(
-        employeeId: employeeId,
-        startDate: _startDate,
-        endDate: _endDate,
-        totalDays: _totalDays,
-        notes: _notesController.text,
-      );
+      await ref
+          .read(teamRepositoryProvider)
+          .createVacationRequest(
+            employeeId: employeeId,
+            startDate: _startDate,
+            endDate: _endDate,
+            totalDays: _totalDays,
+            notes: _notesController.text,
+          );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -71,8 +76,10 @@ class _VacationRequestScreenState extends ConsumerState<VacationRequestScreen> {
       }
     } catch (e) {
       if (mounted) {
+        // Limpiar mensaje de error si es una excepción conocida
+        final message = e.toString().replaceAll('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(message), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -108,8 +115,18 @@ class _VacationRequestScreenState extends ConsumerState<VacationRequestScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Total Días:', style: TextStyle(fontWeight: FontWeight.bold)),
-                            Text('$_totalDays días', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue)),
+                            const Text(
+                              'Total Días:',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              '$_totalDays días',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Colors.blue,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -135,9 +152,9 @@ class _VacationRequestScreenState extends ConsumerState<VacationRequestScreen> {
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                 ),
-                child: _isSubmitting 
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('ENVIAR SOLICITUD'),
+                child: _isSubmitting
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('ENVIAR SOLICITUD'),
               ),
             ],
           ),
@@ -159,10 +176,16 @@ class _VacationRequestScreenState extends ConsumerState<VacationRequestScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  Text(
+                    label,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
                   Text(
                     DateFormat('dd/MM/yyyy').format(date),
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),

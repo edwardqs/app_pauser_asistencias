@@ -297,11 +297,14 @@ class HomeScreen extends ConsumerWidget {
           // Si devuelve algo, confiamos en que es de hoy gracias al filtro del repo.
           final effectiveAttendance = attendance;
 
-          // Solo consideramos check-in activo si es de hoy, no tiene salida Y es de tipo ASISTENCIA
+          // Solo consideramos check-in activo si es de hoy, no tiene salida Y es de tipo ASISTENCIA o IN
+          // O cualquier tipo que NO sea ausencia
           final isCheckedIn =
               effectiveAttendance != null &&
               effectiveAttendance['check_out'] == null &&
-              effectiveAttendance['record_type'] == 'ASISTENCIA';
+              effectiveAttendance['record_type'] != 'AUSENCIA' &&
+              effectiveAttendance['record_type'] != 'INASISTENCIA' &&
+              effectiveAttendance['record_type'] != 'FALTA_INJUSTIFICADA';
 
           final lastCheckIn = effectiveAttendance != null
               ? effectiveAttendance['check_in']

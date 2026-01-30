@@ -13,18 +13,41 @@ class AttendanceRepository {
 
   // Método actualizado para usar el nuevo RPC que devuelve estado completo (Asistencia + Vacaciones)
   Future<Map<String, dynamic>> getEmployeeDayStatus(String employeeId) async {
+    Map<String, dynamic> statusData;
+    
     try {
       final response = await _supabase.rpc(
         'get_employee_day_status',
         params: {'p_employee_id': employeeId},
       );
-      return Map<String, dynamic>.from(response);
+      statusData = Map<String, dynamic>.from(response);
     } catch (e) {
-      // Fallback simple si falla el RPC: Solo asistencia de hoy
-      print('Error en getEmployeeDayStatus: $e');
-      final today = await getTodayAttendance(employeeId);
-      return {'attendance': today, 'vacation': null, 'is_on_vacation': false};
+      print('Error en getEmployeeDayStatus RPC: $e');
+      // Inicializar con valores por defecto si falla el RPC
+      statusData = {
+        'date': DateTime.now().toIso8601String(),
+        'attendance': null,
+        'vacation': null,
+        'is_on_vacation': false
+      };
     }
+
+    // FALLBACK HÍBRIDO ROBUSTO:
+    // Si el RPC no devolvió asistencia (null), intentamos buscarla directamente 
+    // usando la fecha local del cliente. Esto corrige desfases de zona horaria o fallos del RPC.
+    if (statusData['attendance'] == null) {
+      try {
+        final localAttendance = await getTodayAttendance(employeeId);
+        if (localAttendance != null) {
+          print('Attendance found locally (RPC missed it): ${localAttendance['id']}');
+          statusData['attendance'] = localAttendance;
+        }
+      } catch (e) {
+        print('Error en fallback local: $e');
+      }
+    }
+
+    return statusData;
   }
 
   Future<Map<String, dynamic>?> getTodayAttendance(String employeeId) async {
@@ -100,21 +123,21 @@ class AttendanceRepository {
       try {
         final fileExt = evidenceFile.path.split('.').last;
         final fileName =
-            'evidence/$employeeId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+            'evidence/$employeeId/checkin_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
 
-        await _supabase.storage
-            .from('attendance_evidence')
-            .upload(fileName, evidenceFile);
+        await _supabase.storage.from('evidence').upload(fileName, evidenceFile);
 
-        evidenceUrl = _supabase.storage
-            .from('attendance_evidence')
-            .getPublicUrl(fileName);
+        evidenceUrl = _supabase.storage.from('evidence').getPublicUrl(fileName);
       } catch (e) {
-        throw Exception('Error subiendo evidencia: $e');
+        print('Error uploading evidence: $e');
+        // Continue without evidence or throw? Let's continue.
       }
     }
 
-    // 2. Call RPC to register attendance with all data
+    // 2. Call RPC to register attendance
+    // We pass 'IN' as type.
+    // If lateReason is provided, we pass it as notes.
+
     final response = await _supabase.rpc(
       'register_attendance',
       params: {
@@ -122,21 +145,20 @@ class AttendanceRepository {
         'p_lat': lat,
         'p_lng': lng,
         'p_type': 'IN',
-        'p_notes': lateReason,
-        'p_evidence_url': evidenceUrl,
+        if (lateReason != null) 'p_notes': lateReason,
+        if (evidenceUrl != null) 'p_evidence_url': evidenceUrl,
       },
     );
 
-    if (response['success'] == false) {
+    if (response is Map && response['success'] == false) {
       throw Exception(response['message']);
     }
   }
 
   Future<void> reportAbsence({
     required String employeeId,
-    required String reason, // Ahora esto será la nota/comentario
-    required String
-    recordType, // NUEVO: Tipo de motivo (ej. 'ENFERMEDAD COMUN')
+    required String reason,
+    required String recordType,
     required double lat,
     required double lng,
     File? evidenceFile,
@@ -151,16 +173,14 @@ class AttendanceRepository {
             'evidence/$employeeId/absence_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
 
         await _supabase.storage
-            .from(
-              'attendance_evidence',
-            ) // Asegurarse que este bucket existe o usar 'evidence'
+            .from('attendance_evidence')
             .upload(fileName, evidenceFile);
 
         evidenceUrl = _supabase.storage
             .from('attendance_evidence')
             .getPublicUrl(fileName);
       } catch (e) {
-        // Fallback a bucket 'evidence' si 'attendance_evidence' falla
+        // Fallback to 'evidence' bucket
         try {
           final fileExt = evidenceFile.path.split('.').last;
           final fileName =
@@ -184,18 +204,17 @@ class AttendanceRepository {
         'p_employee_id': employeeId,
         'p_lat': lat,
         'p_lng': lng,
-        'p_type': recordType, // Pasamos el tipo seleccionado
+        'p_type': recordType,
         'p_notes': reason,
         'p_evidence_url': evidenceUrl,
       },
     );
 
-    if (response['success'] == false) {
+    if (response is Map && response['success'] == false) {
       throw Exception(response['message']);
     }
   }
 
-  // Método para obtener motivos (Reutilizando lógica, idealmente mover a un provider común)
   Future<List<Map<String, dynamic>>> getAbsenceReasons() async {
     try {
       final response = await _supabase
@@ -206,24 +225,15 @@ class AttendanceRepository {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      throw Exception('Error cargando motivos: $e');
+      // Fallback
+      return [
+        {'name': 'ENFERMEDAD COMUN', 'requires_evidence': true},
+        {'name': 'MOTIVOS DE SALUD', 'requires_evidence': true},
+        {'name': 'MOTIVOS FAMILIARES', 'requires_evidence': false},
+        {'name': 'PERMISO', 'requires_evidence': false},
+        {'name': 'VACACIONES', 'requires_evidence': false},
+      ];
     }
-  }
-
-  Future<void> checkOut({
-    required String employeeId,
-    required double lat,
-    required double lng,
-  }) async {
-    await _supabase.rpc(
-      'register_attendance',
-      params: {
-        'p_employee_id': employeeId,
-        'p_lat': lat,
-        'p_lng': lng,
-        'p_type': 'OUT',
-      },
-    );
   }
 
   // NUEVO: Registrar falta injustificada automática (Triggered by Client)

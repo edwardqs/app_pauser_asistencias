@@ -53,6 +53,7 @@ class RequestsRepository {
           'p_employee_id': employeeId,
           'p_start_date': startDate.toIso8601String().split('T')[0],
           'p_end_date': endDate.toIso8601String().split('T')[0],
+          'p_exclude_request_id': null, // Es creación nueva
         },
       );
 
@@ -97,8 +98,18 @@ class RequestsRepository {
 
       await _supabase.from('vacation_requests').insert(data);
     } catch (e) {
-      // Si es una excepción nuestra, la relanzamos tal cual
-      if (e.toString().contains('No se permite')) rethrow;
+      // Si es una excepción nuestra (o de RPC), la relanzamos tal cual para que el usuario vea el mensaje
+      if (e.toString().contains('No se permite') ||
+          e.toString().contains('superponen'))
+        rethrow;
+
+      // Capturamos error de trigger de BD
+      if (e.toString().contains('P0001')) {
+        // Código de error de 'RAISE EXCEPTION' en Postgres
+        final msg = e.toString().split('message:').last.trim();
+        throw Exception(msg);
+      }
+
       throw Exception('Error al crear solicitud: $e');
     }
   }

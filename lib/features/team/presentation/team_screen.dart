@@ -40,10 +40,18 @@ class TeamScreen extends ConsumerWidget {
     // Verificar permisos de Supervisor (Solo RRHH)
     final storage = ref.watch(storageServiceProvider);
     final userPosition = (storage.position ?? '').trim().toUpperCase();
+    final userRole = (storage.employeeType ?? '')
+        .trim()
+        .toUpperCase(); // Usamos employeeType donde guardamos el rol
+
     final isSupervisor =
+        userPosition.contains('GENTE Y GESTIÓN') || // Normalizado con tilde
         userPosition.contains('GENTE Y GESTION') ||
         userPosition.contains('RRHH') ||
-        userPosition.contains('GENTE & GESTION');
+        userPosition.contains('GENTE & GESTION') ||
+        userPosition.contains('SEGURIDAD Y SALUD') || // Para SST
+        userRole.contains('JEFE_RRHH') ||
+        userRole.contains('ANALISTA_RRHH');
 
     if (!isSupervisor) {
       return Scaffold(

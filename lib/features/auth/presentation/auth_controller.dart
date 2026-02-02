@@ -4,6 +4,7 @@ import 'package:app_asistencias_pauser/features/attendance/presentation/home_scr
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/auth/data/auth_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final authControllerProvider = AsyncNotifierProvider<AuthController, void>(
   AuthController.new,
@@ -45,6 +46,25 @@ class AuthController extends AsyncNotifier<void> {
         final sede = response['sede'] as String?;
         final businessUnit = response['business_unit'] as String?;
         final profilePicture = response['profile_picture_url'] as String?;
+
+        // ---------------------------------------------------------
+        // AUTENTICACIÓN REAL CON SUPABASE AUTH (Necesario para RLS)
+        // ---------------------------------------------------------
+        final email = response['email'] as String?;
+        if (email != null && email.isNotEmpty) {
+           try {
+             // Iniciamos sesión en Supabase Auth usando el email devuelto por mobile_login
+             // y la contraseña que el usuario ingresó.
+             await Supabase.instance.client.auth.signInWithPassword(
+               email: email,
+               password: password,
+             );
+             print("Login en Supabase Auth exitoso para: $email");
+           } catch (authError) {
+             print("ADVERTENCIA: Falló autenticación en Supabase Auth: $authError");
+             // No bloqueamos el login de la app, pero RLS podría fallar si se requiere escritura.
+           }
+        }
 
         // Save to Storage
         final storage = ref.read(storageServiceProvider);

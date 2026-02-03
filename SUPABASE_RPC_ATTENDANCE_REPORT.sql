@@ -82,7 +82,7 @@ BEGIN
                 WHEN p_status = 'on_time' THEN jd.record_type = 'ASISTENCIA' AND jd.is_late = false
                 WHEN p_status = 'late' THEN jd.is_late = true
                 -- 'absent' incluye tanto ausencias registradas como pendientes (sin registro)
-                WHEN p_status = 'absent' THEN (jd.record_type IN ('AUSENCIA', 'INASISTENCIA', 'FALTA JUSTIFICADA', 'AUSENCIA SIN JUSTIFICAR', 'FALTA_INJUSTIFICADA') OR jd.attendance_id IS NULL)
+                WHEN p_status = 'absent' THEN (jd.record_type IN ('AUSENCIA', 'INASISTENCIA', 'FALTA JUSTIFICADA', 'AUSENCIA SIN JUSTIFICAR', 'FALTA_INJUSTIFICADA') OR jd.attendance_id IS NULL OR jd.record_type IS NULL)
                 WHEN p_status = 'medical' THEN jd.record_type = 'DESCANSO MÉDICO'
                 WHEN p_status = 'license' THEN jd.record_type = 'LICENCIA CON GOCE'
                 WHEN p_status = 'vacation' THEN jd.record_type = 'VACACIONES'
@@ -154,7 +154,10 @@ BEGIN
     SELECT 
         COUNT(*) FILTER (WHERE a.record_type = 'ASISTENCIA' AND a.is_late = false),
         COUNT(*) FILTER (WHERE a.is_late = true),
-        COUNT(*) FILTER (WHERE a.record_type IN ('AUSENCIA', 'INASISTENCIA', 'FALTA JUSTIFICADA', 'AUSENCIA SIN JUSTIFICAR', 'FALTA_INJUSTIFICADA'))
+        COUNT(*) FILTER (WHERE 
+            a.record_type IN ('AUSENCIA', 'INASISTENCIA', 'FALTA JUSTIFICADA', 'AUSENCIA SIN JUSTIFICAR', 'FALTA_INJUSTIFICADA')
+            OR (a.record_type IS NULL AND a.check_in IS NULL) -- Incluir registros vacíos como ausencias
+        )
     INTO v_on_time, v_late, v_absent
     FROM public.attendance a
     JOIN public.employees e ON a.employee_id = e.id

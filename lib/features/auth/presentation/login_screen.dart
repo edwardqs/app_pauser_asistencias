@@ -73,7 +73,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             top: 0,
             left: 0,
             right: 0,
-            height: MediaQuery.of(context).size.height * 0.45, // Ocupa el 45% superior
+            height:
+                MediaQuery.of(context).size.height *
+                0.45, // Ocupa el 45% superior
             child: Stack(
               children: [
                 // Imagen
@@ -117,14 +119,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ).animate().slideX(begin: -0.2, end: 0, duration: 600.ms),
                       const SizedBox(height: 4),
                       Text(
-                        'PAUSER RRHH',
+                        'CORETIME - REGISTRO DE ASISTENCIAS',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 32,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.0,
                         ),
-                      ).animate().slideX(begin: -0.2, end: 0, delay: 100.ms, duration: 600.ms),
+                      ).animate().slideX(
+                        begin: -0.2,
+                        end: 0,
+                        delay: 100.ms,
+                        duration: 600.ms,
+                      ),
                     ],
                   ),
                 ),
@@ -134,7 +141,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
           // 2. Contenedor Inferior (Formulario) con bordes redondeados
           Positioned(
-            top: MediaQuery.of(context).size.height * 0.4 - 20, // Se superpone un poco
+            top:
+                MediaQuery.of(context).size.height * 0.4 -
+                20, // Se superpone un poco
             left: 0,
             right: 0,
             bottom: 0,
@@ -154,7 +163,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ],
               ),
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 32,
+                ),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -163,7 +175,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 10),
                       Text(
                         'Iniciar Sesión',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: Colors.blue.shade900,
                             ),
@@ -179,66 +192,101 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                       // DNI Field
                       TextFormField(
-                        controller: _dniController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(8),
-                        ],
-                        decoration: InputDecoration(
-                          labelText: 'DNI',
-                          hintText: '8 dígitos',
-                          prefixIcon: const Icon(Icons.badge_outlined),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: Colors.grey.shade200),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: Colors.grey.shade200),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) return 'Requerido';
-                          if (value.length != 8) return 'DNI inválido';
-                          return null;
-                        },
-                      ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.2, end: 0),
-                      
+                            controller: _dniController,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(8),
+                            ],
+                            decoration: InputDecoration(
+                              labelText: 'DNI',
+                              hintText: '8 dígitos',
+                              prefixIcon: const Icon(Icons.badge_outlined),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade200,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade200,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty)
+                                return 'Requerido';
+                              if (value.length != 8) return 'DNI inválido';
+                              return null;
+                            },
+                          )
+                          .animate()
+                          .fadeIn(delay: 200.ms)
+                          .slideY(begin: 0.2, end: 0),
+
                       const SizedBox(height: 20),
 
                       // Password Field
                       TextFormField(
-                        controller: _passwordController,
-                        obscureText: !_isPasswordVisible,
-                        decoration: InputDecoration(
-                          labelText: 'Contraseña',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _isPasswordVisible
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
+                            controller: _passwordController,
+                            obscureText: !_isPasswordVisible,
+                            decoration: InputDecoration(
+                              labelText: 'Contraseña',
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _isPasswordVisible
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                ),
+                                onPressed: () => setState(
+                                  () =>
+                                      _isPasswordVisible = !_isPasswordVisible,
+                                ),
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade200,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade200,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
                             ),
-                            onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: Colors.grey.shade200),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: Colors.grey.shade200),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                        ),
-                        validator: (value) => value == null || value.isEmpty ? 'Requerido' : null,
-                      ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.2, end: 0),
+                            validator: (value) => value == null || value.isEmpty
+                                ? 'Requerido'
+                                : null,
+                          )
+                          .animate()
+                          .fadeIn(delay: 300.ms)
+                          .slideY(begin: 0.2, end: 0),
 
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => context.push('/forgot-password'),
+                          child: Text(
+                            '¿Olvidaste tu contraseña?',
+                            style: TextStyle(
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ).animate().fadeIn(delay: 350.ms),
+
+                      const SizedBox(height: 24),
 
                       // Login Button
                       SizedBox(
@@ -246,7 +294,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: ElevatedButton(
                           onPressed: isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2563EB), // Azul corporativo
+                            backgroundColor: const Color(
+                              0xFF2563EB,
+                            ), // Azul corporativo
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
@@ -258,7 +308,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ? const SizedBox(
                                   height: 24,
                                   width: 24,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Text(
                                   'INGRESAR',
@@ -270,12 +323,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                         ),
                       ).animate().fadeIn(delay: 400.ms).scale(),
-                      
+
                       const SizedBox(height: 24),
                       Center(
                         child: Text(
                           'v1.0.0',
-                          style: TextStyle(color: Colors.grey.shade300, fontSize: 12),
+                          style: TextStyle(
+                            color: Colors.grey.shade300,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],

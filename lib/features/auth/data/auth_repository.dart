@@ -60,4 +60,32 @@ class AuthRepository {
       throw Exception('Error cambiando contraseña: $e');
     }
   }
+
+  /// Restablece la contraseña verificando identidad (DNI + Fecha Nacimiento)
+  Future<void> resetPasswordWithIdentity({
+    required String dni,
+    required DateTime birthDate,
+    required String newPassword,
+  }) async {
+    try {
+      // Formato YYYY-MM-DD para Supabase date
+      final birthDateStr =
+          "${birthDate.year}-${birthDate.month.toString().padLeft(2, '0')}-${birthDate.day.toString().padLeft(2, '0')}";
+
+      final response = await _supabase.rpc(
+        'reset_password_identity',
+        params: {
+          'p_dni': dni,
+          'p_birth_date': birthDateStr,
+          'p_new_password': newPassword,
+        },
+      );
+
+      if (response['success'] == false) {
+        throw Exception(response['message']);
+      }
+    } catch (e) {
+      throw Exception('Error al restablecer: $e');
+    }
+  }
 }

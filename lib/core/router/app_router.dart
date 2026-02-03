@@ -3,6 +3,7 @@ import 'package:app_asistencias_pauser/core/services/auth_notifier.dart';
 import 'package:app_asistencias_pauser/features/attendance/presentation/attendance_history_screen.dart';
 import 'package:app_asistencias_pauser/features/attendance/presentation/home_screen.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/login_screen.dart';
+import 'package:app_asistencias_pauser/features/auth/presentation/forgot_password_screen.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/profile_screen.dart';
 import 'package:app_asistencias_pauser/features/team/presentation/manual_attendance_screen.dart';
 import 'package:app_asistencias_pauser/features/team/presentation/team_screen.dart';
@@ -18,6 +19,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: authState.isAuthenticated ? '/home' : '/login',
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (context, state) => const ForgotPasswordScreen(),
+      ),
       ShellRoute(
         builder: (context, state, child) {
           return MainLayout(child: child);
@@ -53,12 +58,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isLoggedIn = authState.isAuthenticated;
       final isLoginRoute = state.uri.path == '/login';
+      final isForgotRoute = state.uri.path == '/forgot-password';
 
-      if (!isLoggedIn && !isLoginRoute) {
+      if (!isLoggedIn && !isLoginRoute && !isForgotRoute) {
         return '/login';
       }
 
-      if (isLoggedIn && isLoginRoute) {
+      if (isLoggedIn && (isLoginRoute || isForgotRoute)) {
         return '/home';
       }
 

@@ -11,10 +11,20 @@ final teamAttendanceProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
       final storage = ref.watch(storageServiceProvider);
       final supervisorId = storage.employeeId;
+      final sede = storage.sede;
+      final role = (storage.employeeType ?? '').toUpperCase();
 
       if (supervisorId == null) return [];
 
-      return ref.watch(teamRepositoryProvider).getTeamAttendance(supervisorId);
+      final isAdmin =
+          role == 'ADMIN' ||
+          role == 'SUPER ADMIN' ||
+          role.contains('RRHH') ||
+          role.contains('GENTE');
+
+      return ref
+          .watch(teamRepositoryProvider)
+          .getTeamAttendance(supervisorId, sede: sede, isAdmin: isAdmin);
     });
 
 // Provider para el filtro seleccionado (Notifier)
@@ -50,8 +60,14 @@ class TeamScreen extends ConsumerWidget {
         userPosition.contains('RRHH') ||
         userPosition.contains('GENTE & GESTION') ||
         userPosition.contains('SEGURIDAD Y SALUD') || // Para SST
+        userPosition.contains('JEFE') || // Nuevo: Jefes de área
+        userPosition.contains('GERENTE') || // Nuevo: Gerentes
+        userPosition.contains('COORDINADOR') || // Nuevo: Coordinadores
+        userPosition.contains('SUPERVISOR') || // Nuevo: Supervisores
         userRole.contains('JEFE_RRHH') ||
-        userRole.contains('ANALISTA_RRHH');
+        userRole.contains('ANALISTA_RRHH') ||
+        userRole == 'ADMIN' ||
+        userRole == 'SUPER ADMIN';
 
     if (!isSupervisor) {
       return Scaffold(

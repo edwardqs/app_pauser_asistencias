@@ -12,8 +12,10 @@ class TeamRepository {
   TeamRepository(this._supabase);
 
   Future<List<Map<String, dynamic>>> getTeamAttendance(
-    String supervisorId,
-  ) async {
+    String supervisorId, {
+    String? sede,
+    bool isAdmin = false,
+  }) async {
     try {
       // Usamos la nueva RPC get_daily_attendance_report para obtener TODOS
       // los empleados, similar a la web.
@@ -35,7 +37,18 @@ class TeamRepository {
         return [];
       }
 
-      return List<Map<String, dynamic>>.from(response);
+      final allEmployees = List<Map<String, dynamic>>.from(response);
+
+      // Filtrado local por Sede si NO es Admin y se proporcionó una sede
+      if (!isAdmin && sede != null && sede.isNotEmpty) {
+        final normalizedUserSede = sede.trim().toUpperCase();
+        return allEmployees.where((emp) {
+          final empSede = (emp['sede'] as String?)?.trim().toUpperCase();
+          return empSede == normalizedUserSede;
+        }).toList();
+      }
+
+      return allEmployees;
     } catch (e) {
       // print('Error fetching team attendance: $e');
       throw Exception('Error cargando equipo: $e');

@@ -16,12 +16,14 @@ class StorageService {
   static const String keyEmployeeType = 'employee_type';
   static const String keyPosition = 'position';
   static const String keyProfilePicture = 'profile_picture';
+  static const String keyCanMarkAttendance = 'can_mark_attendance';
+  static const String keyRestrictionMessage = 'restriction_message';
 
   final SharedPreferences _prefs;
   final SupabaseClient _supabase;
 
   StorageService(this._prefs, {SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+    : _supabase = supabase ?? Supabase.instance.client;
 
   static Future<StorageService> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -62,6 +64,8 @@ class StorageService {
     required String? employeeType,
     required String? position,
     String? profilePicture,
+    bool? canMarkAttendance,
+    String? restrictionMessage,
   }) async {
     await _prefs.setString(keyEmployeeId, employeeId);
     await _prefs.setString(keyFullName, fullName);
@@ -77,6 +81,12 @@ class StorageService {
     if (position != null) await _prefs.setString(keyPosition, position);
     if (profilePicture != null) {
       await _prefs.setString(keyProfilePicture, profilePicture);
+    }
+    if (canMarkAttendance != null) {
+      await _prefs.setBool(keyCanMarkAttendance, canMarkAttendance);
+    }
+    if (restrictionMessage != null) {
+      await _prefs.setString(keyRestrictionMessage, restrictionMessage);
     }
   }
 
@@ -98,6 +108,8 @@ class StorageService {
   String? get userName => fullName;
   String? get position => _prefs.getString(keyPosition);
   String? get profilePicture => _prefs.getString(keyProfilePicture);
+  bool get canMarkAttendance => _prefs.getBool(keyCanMarkAttendance) ?? true;
+  String? get restrictionMessage => _prefs.getString(keyRestrictionMessage);
 
   bool get isAuthenticated => employeeId != null;
 }

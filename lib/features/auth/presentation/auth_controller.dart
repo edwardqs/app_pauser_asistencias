@@ -47,23 +47,30 @@ class AuthController extends AsyncNotifier<void> {
         final businessUnit = response['business_unit'] as String?;
         final profilePicture = response['profile_picture_url'] as String?;
 
+        // New fields for access control
+        final canMarkAttendance =
+            response['can_mark_attendance'] as bool? ?? true;
+        final restrictionMessage = response['restriction_message'] as String?;
+
         // ---------------------------------------------------------
         // AUTENTICACIÓN REAL CON SUPABASE AUTH (Necesario para RLS)
         // ---------------------------------------------------------
         final email = response['email'] as String?;
         if (email != null && email.isNotEmpty) {
-           try {
-             // Iniciamos sesión en Supabase Auth usando el email devuelto por mobile_login
-             // y la contraseña que el usuario ingresó.
-             await Supabase.instance.client.auth.signInWithPassword(
-               email: email,
-               password: password,
-             );
-             print("Login en Supabase Auth exitoso para: $email");
-           } catch (authError) {
-             print("ADVERTENCIA: Falló autenticación en Supabase Auth: $authError");
-             // No bloqueamos el login de la app, pero RLS podría fallar si se requiere escritura.
-           }
+          try {
+            // Iniciamos sesión en Supabase Auth usando el email devuelto por mobile_login
+            // y la contraseña que el usuario ingresó.
+            await Supabase.instance.client.auth.signInWithPassword(
+              email: email,
+              password: password,
+            );
+            print("Login en Supabase Auth exitoso para: $email");
+          } catch (authError) {
+            print(
+              "ADVERTENCIA: Falló autenticación en Supabase Auth: $authError",
+            );
+            // No bloqueamos el login de la app, pero RLS podría fallar si se requiere escritura.
+          }
         }
 
         // Save to Storage
@@ -79,6 +86,8 @@ class AuthController extends AsyncNotifier<void> {
           employeeType: userRole ?? employeeType,
           position: position,
           profilePicture: profilePicture,
+          canMarkAttendance: canMarkAttendance,
+          restrictionMessage: restrictionMessage,
         );
 
         // Notificar al AuthNotifier que el usuario se ha autenticado correctamente

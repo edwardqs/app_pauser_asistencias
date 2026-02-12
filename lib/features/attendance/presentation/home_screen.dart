@@ -271,6 +271,8 @@ class HomeScreen extends ConsumerWidget {
 
     final positionTitle = storage.position ?? 'Empleado';
     final profilePic = storage.profilePicture;
+    final canMarkAttendance = storage.canMarkAttendance;
+    final restrictionMessage = storage.restrictionMessage;
 
     return Scaffold(
       body: employeeStatusAsync.when(
@@ -724,6 +726,62 @@ class HomeScreen extends ConsumerWidget {
                                           ),
                                         ),
                                       ],
+                                    ],
+                                  ),
+                                ).animate().scale(
+                                  curve: Curves.elasticOut,
+                                  duration: 800.ms,
+                                ),
+                              ] else if (!canMarkAttendance) ...[
+                                // RESTRICTED STATE (Policy)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(32),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF64748B),
+                                        Color(0xFF475569),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(32),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      const Icon(
+                                        Icons.lock_clock,
+                                        size: 64,
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      const Text(
+                                        'REGISTRO RESTRINGIDO',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        restrictionMessage ??
+                                            'Su ubicación requiere registro en Reloj Biométrico.',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ).animate().scale(

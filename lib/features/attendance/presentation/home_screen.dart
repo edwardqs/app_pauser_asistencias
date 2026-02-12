@@ -773,9 +773,7 @@ class HomeScreen extends ConsumerWidget {
                                         isFaltaInjustificada
                                             ? 'FALTA INJUSTIFICADA'
                                             : (isAbsence
-                                                  ? (effectiveAttendance != null
-                                                        ? effectiveAttendance['record_type']
-                                                        : 'Ausencia Registrada')
+                                                  ? (effectiveAttendance['record_type'])
                                                   : '¡Jornada Iniciada!'),
                                         style: TextStyle(
                                           color: isFaltaInjustificada

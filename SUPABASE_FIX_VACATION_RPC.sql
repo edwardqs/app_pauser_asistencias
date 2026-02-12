@@ -1,4 +1,9 @@
 -- CORRECCIÓN: Script para get_vacation_overview sin errores de tipos en fechas
+-- ACTUALIZACIÓN: Cálculo de días ganados y saldo truncado a ENTEROS (sin decimales)
+
+-- PRIMERO BORRAMOS LA FUNCIÓN EXISTENTE PARA EVITAR CONFLICTOS DE TIPOS DE RETORNO
+DROP FUNCTION IF EXISTS public.get_vacation_overview(text, text);
+
 CREATE OR REPLACE FUNCTION public.get_vacation_overview(
     p_sede text DEFAULT NULL,
     p_search text DEFAULT NULL
@@ -8,6 +13,7 @@ RETURNS TABLE (
     full_name text,
     "position" text,
     sede text,
+    business_unit text, -- Agregado para restaurar la columna perdida
     entry_date date,
     years_of_service numeric,
     earned_days numeric,
@@ -27,6 +33,7 @@ BEGIN
             e.full_name,
             e.position,
             e.sede,
+            e.business_unit, -- Seleccionar de la tabla employees
             e.entry_date,
             e.legacy_vacation_days_taken,
             
@@ -38,9 +45,10 @@ BEGIN
             ) as years_service,
             
             -- Calcular días ganados: (Días trabajados / 360) * 30
-            ROUND(
+            -- TRUNCAMOS a 0 decimales para que sea ENTERO
+            TRUNC(
                 ((CURRENT_DATE - e.entry_date)::numeric / 360.0 * 30.0),
-                2
+                0
             ) as earned,
             
             -- Calcular días consumidos desde la App (status = 'APROBADO')
@@ -65,6 +73,7 @@ BEGIN
         vc.full_name,
         vc.position,
         vc.sede,
+        vc.business_unit, -- Retornar en el SELECT final
         vc.entry_date,
         vc.years_service,
         vc.earned as earned_days,
@@ -72,7 +81,11 @@ BEGIN
         vc.app_used as app_taken,
         
         -- Saldo: Ganados - (Histórico + App)
-        (vc.earned - (COALESCE(vc.legacy_vacation_days_taken, 0) + vc.app_used)) as balance,
+        -- TRUNCAMOS el resultado final para asegurar ENTEROS en el saldo
+        TRUNC(
+            (vc.earned - (COALESCE(vc.legacy_vacation_days_taken, 0) + vc.app_used)),
+            0
+        ) as balance,
         
         -- Semáforo (Lógica de Negocio)
         CASE 

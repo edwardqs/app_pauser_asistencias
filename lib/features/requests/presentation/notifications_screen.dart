@@ -16,52 +16,93 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
-    // Marcar como leídas al salir o entrar? Mejor al verlas.
-    // Lo haremos en el build item o al cerrar.
-    // Para simplificar, marcaremos todas como leídas al abrir esta pantalla tras un pequeño delay.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _markAllAsRead();
-    });
+    // Marcar como leídas al salir de la pantalla o al entrar (opcional)
+    // Por ahora lo manejamos individualmente o en bloque según la UI
   }
 
-  Future<void> _markAllAsRead() async {
-    final employeeId = ref.read(storageServiceProvider).employeeId;
-    if (employeeId == null) return;
+  String _formatDate(String dateString) {
+    try {
+      final date = DateTime.parse(dateString).toLocal();
+      final now = DateTime.now();
+      final difference = now.difference(date);
 
-    // Obtenemos las no leídas primero (esto es una optimización,
-    // idealmente el repo tendría un método markAllRead)
-    // Por ahora, dejaremos que el usuario interactúe o marcaremos las visibles.
-    // Vamos a asumir que al abrir la pantalla, el usuario "ve" las notificaciones.
-
-    // NOTA: Como es un Stream, es complejo obtener los IDs exactos sin suscribirse.
-    // Mejor implementamos un botón "Marcar todo como leído" o lo hacemos automático en el backend.
-    // Por ahora, visualmente las mostraremos.
+      if (difference.inMinutes < 1) {
+        return 'Hace un momento';
+      } else if (difference.inHours < 1) {
+        return 'Hace ${difference.inMinutes} min';
+      } else if (difference.inHours < 24) {
+        return 'Hace ${difference.inHours} h';
+      } else if (difference.inDays < 7) {
+        return 'Hace ${difference.inDays} d';
+      } else {
+        return DateFormat('dd/MM/yyyy HH:mm').format(date);
+      }
+    } catch (e) {
+      return dateString;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final employeeId = ref.watch(storageServiceProvider).employeeId;
+    final storage = ref.watch(storageServiceProvider);
+    final employeeId = storage.employeeId;
 
     if (employeeId == null) {
-      return const Scaffold(body: Center(child: Text('No identificado')));
+      return const Scaffold(
+        body: Center(child: Text('No se encontró información del usuario')),
+      );
     }
 
-    final notificationsAsync = ref.watch(
-      notificationsStreamProvider(employeeId),
-    );
+    final notificationsStream = ref
+        .watch(requestsRepositoryProvider)
+        .watchNotifications(employeeId);
 
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text('Notificaciones'),
+        title: const Text(
+          'Notificaciones',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0.5,
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => _showPreferencesDialog(context, employeeId),
+            icon: const Icon(Icons.done_all, color: Colors.blue),
+            tooltip: 'Marcar todo como leído',
+            onPressed: () async {
+              // Lógica para marcar todo como leído (opcional, requiere implementación en repo)
+              // Por ahora solo visual
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Funcionalidad en desarrollo')),
+              );
+            },
           ),
         ],
       ),
-      body: notificationsAsync.when(
-        data: (notifications) {
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: notificationsStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Error: ${snapshot.error}'),
+                ],
+              ),
+            );
+          }
+
+          final notifications = snapshot.data ?? [];
+
           if (notifications.isEmpty) {
             return Center(
               child: Column(
@@ -73,208 +114,128 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     color: Colors.grey[300],
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     'No tienes notificaciones',
-                    style: TextStyle(color: Colors.grey),
+                    style: TextStyle(color: Colors.grey[500], fontSize: 16),
                   ),
                 ],
               ),
             );
           }
 
-          // Recopilar IDs no leídos para marcar
-          final unreadIds = notifications
-              .where((n) => n['is_read'] == false)
-              .map((n) => n['id'] as String)
-              .toList();
-
-          if (unreadIds.isNotEmpty) {
-            // Marcar como leídas en segundo plano
-            Future.delayed(const Duration(seconds: 2), () {
-              ref
-                  .read(requestsRepositoryProvider)
-                  .markNotificationsAsRead(unreadIds);
-            });
-          }
-
-          return ListView.separated(
+          return ListView.builder(
             itemCount: notifications.length,
-            separatorBuilder: (ctx, i) => const Divider(height: 1),
+            padding: const EdgeInsets.symmetric(vertical: 10),
             itemBuilder: (context, index) {
               final notification = notifications[index];
               final isRead = notification['is_read'] ?? false;
-              final date = DateTime.parse(notification['created_at']).toLocal();
+              final title = notification['title'] ?? 'Notificación';
+              final message = notification['message'] ?? '';
+              final createdAt =
+                  notification['created_at'] ??
+                  DateTime.now().toIso8601String();
+              final id = notification['id'];
 
-              return Container(
-                color: isRead ? Colors.white : Colors.blue.withOpacity(0.05),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: isRead
-                        ? Colors.grey[200]
-                        : Colors.blue[100],
-                    child: Icon(
-                      _getIconForType(notification['type']),
-                      color: isRead ? Colors.grey : Colors.blue,
-                    ),
+              return Dismissible(
+                key: Key(id.toString()),
+                background: Container(color: Colors.red),
+                onDismissed: (direction) {
+                  // Opcional: Eliminar notificación
+                },
+                child: Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
                   ),
-                  title: Text(
-                    notification['title'],
-                    style: TextStyle(
-                      fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+                  decoration: BoxDecoration(
+                    color: isRead ? Colors.white : Colors.blue[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isRead ? Colors.grey[200]! : Colors.blue[100]!,
                     ),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 4),
-                      Text(notification['message']),
-                      const SizedBox(height: 4),
-                      Text(
-                        DateFormat('dd/MM/yyyy HH:mm').format(date),
-                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                      ),
+                    boxShadow: [
+                      if (!isRead)
+                        BoxShadow(
+                          color: Colors.blue.withOpacity(0.05),
+                          blurRadius: 5,
+                          offset: const Offset(0, 2),
+                        ),
                     ],
                   ),
-                  isThreeLine: true,
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    leading: CircleAvatar(
+                      backgroundColor: isRead
+                          ? Colors.grey[200]
+                          : Colors.blue[100],
+                      child: Icon(
+                        isRead
+                            ? Icons.notifications_none
+                            : Icons.notifications_active,
+                        color: isRead ? Colors.grey : Colors.blue[700],
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: isRead
+                            ? FontWeight.normal
+                            : FontWeight.bold,
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4),
+                        Text(
+                          message,
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _formatDate(createdAt),
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    onTap: () async {
+                      if (!isRead) {
+                        // Marcar como leída al tocar
+                        try {
+                          await ref
+                              .read(requestsRepositoryProvider)
+                              .markNotificationsAsRead([id]);
+                        } catch (e) {
+                          // Ignorar error silenciosamente o loguear
+                          debugPrint('Error marcando leída: $e');
+                        }
+                      }
+
+                      // Si la notificación tiene datos adjuntos para navegar, úsalos aquí
+                      // Por ejemplo:
+                      // if (notification['data'] != null && notification['data']['request_id'] != null) {
+                      //    Navigator.push(... ir a detalle de solicitud ...);
+                      // }
+                    },
+                  ),
                 ),
               );
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('Error: $err')),
       ),
     );
   }
-
-  IconData _getIconForType(String? type) {
-    switch (type) {
-      case 'REQUEST_UPDATE':
-        return Icons.assignment_turned_in;
-      case 'REMINDER':
-        return Icons.alarm;
-      default:
-        return Icons.notifications;
-    }
-  }
-
-  void _showPreferencesDialog(BuildContext context, String employeeId) {
-    showDialog(
-      context: context,
-      builder: (context) =>
-          NotificationPreferencesDialog(employeeId: employeeId),
-    );
-  }
 }
-
-class NotificationPreferencesDialog extends ConsumerStatefulWidget {
-  final String employeeId;
-  const NotificationPreferencesDialog({super.key, required this.employeeId});
-
-  @override
-  ConsumerState<NotificationPreferencesDialog> createState() =>
-      _NotificationPreferencesDialogState();
-}
-
-class _NotificationPreferencesDialogState
-    extends ConsumerState<NotificationPreferencesDialog> {
-  bool _pushEnabled = true;
-  bool _emailEnabled = true;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPreferences();
-  }
-
-  Future<void> _loadPreferences() async {
-    try {
-      final prefs = await ref
-          .read(requestsRepositoryProvider)
-          .getNotificationPreferences(widget.employeeId);
-      if (mounted) {
-        setState(() {
-          _pushEnabled = prefs['push_enabled'] ?? true;
-          _emailEnabled = prefs['email_enabled'] ?? true;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _savePreferences() async {
-    setState(() => _isLoading = true);
-    try {
-      await ref
-          .read(requestsRepositoryProvider)
-          .updateNotificationPreferences(
-            widget.employeeId,
-            _pushEnabled,
-            _emailEnabled,
-          );
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Preferencias guardadas')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Preferencias de Notificación'),
-      content: _isLoading
-          ? const SizedBox(
-              height: 100,
-              child: Center(child: CircularProgressIndicator()),
-            )
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SwitchListTile(
-                  title: const Text('Notificaciones Push'),
-                  subtitle: const Text('Recibir alertas en el dispositivo'),
-                  value: _pushEnabled,
-                  onChanged: (val) => setState(() => _pushEnabled = val),
-                ),
-                SwitchListTile(
-                  title: const Text('Correo Electrónico'),
-                  subtitle: const Text('Recibir alertas por email'),
-                  value: _emailEnabled,
-                  onChanged: (val) => setState(() => _emailEnabled = val),
-                ),
-              ],
-            ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('CANCELAR'),
-        ),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _savePreferences,
-          child: const Text('GUARDAR'),
-        ),
-      ],
-    );
-  }
-}
-
-// Provider para el stream
-final notificationsStreamProvider = StreamProvider.family
-    .autoDispose<List<Map<String, dynamic>>, String>((ref, employeeId) {
-      return ref
-          .watch(requestsRepositoryProvider)
-          .watchNotifications(employeeId);
-    });

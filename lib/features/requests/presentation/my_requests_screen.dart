@@ -9,7 +9,6 @@ import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 final myRequestsProvider = StreamProvider.autoDispose
     .family<List<Map<String, dynamic>>, String>((ref, employeeId) {
@@ -116,7 +115,12 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen>
                     ),
                     child: TabBarView(
                       controller: _tabController,
-                      children: const [_NewRequestForm(), _RequestsHistory()],
+                      children: [
+                        _NewRequestForm(
+                          onSuccess: () => _tabController.animateTo(1),
+                        ),
+                        const _RequestsHistory(),
+                      ],
                     ),
                   ),
                 ),
@@ -133,7 +137,8 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen>
 // FORMULARIO DE NUEVA SOLICITUD (COMPLETO)
 // -----------------------------------------------------------------------------
 class _NewRequestForm extends ConsumerStatefulWidget {
-  const _NewRequestForm();
+  final VoidCallback? onSuccess;
+  const _NewRequestForm({this.onSuccess});
 
   @override
   ConsumerState<_NewRequestForm> createState() => _NewRequestFormState();
@@ -235,48 +240,14 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
           );
 
       if (mounted) {
+        // Notificación breve
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Solicitud registrada. Generando documento...'),
-            backgroundColor: Colors.blue,
+            content: Text('Solicitud registrada correctamente'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
           ),
         );
-
-        // Generar PDF automáticamente
-        bool success = false;
-        try {
-          success = await generateAndUploadPdf(
-            context: context,
-            ref: ref,
-            requestId: requestId,
-            requestData: {
-              'request_type': _selectedType,
-              'start_date': _startDate!.toIso8601String(),
-              'end_date': _endDate!.toIso8601String(),
-            },
-            storage: storage,
-          );
-        } catch (e) {
-          debugPrint("Error generando PDF inicial: $e");
-        }
-
-        if (success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Solicitud y documento generados correctamente'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Solicitud registrada. PDF pendiente de generar (ver Historial).',
-              ),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
 
         // Limpiar formulario
         setState(() {
@@ -286,6 +257,47 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
           _evidenceFile = null;
           _evidenceFileName = null;
           _selectedType = 'VACACIONES';
+        });
+
+        // 1. CAMBIO DE PESTAÑA AUTOMÁTICO
+        // Disparamos callback si existe, o intentamos buscar el TabController padre si fuera posible.
+        // Como _NewRequestForm es hijo de TabBarView controlado por _MyRequestsScreenState,
+        // necesitamos un mecanismo para comunicarnos hacia arriba.
+        // La forma más limpia sin reestructurar todo es usar un callback.
+        // Pero dado que no puedo cambiar el constructor fácilmente sin ver dónde se instancia,
+        // voy a asumir que el usuario prefiere que modifique la estructura para pasar el callback.
+
+        // Sin embargo, una solución rápida y efectiva en Flutter es usar un NotificationListener o
+        // un Provider compartido para el índice del tab.
+        // O más simple: DefaultTabController.of(context)?.animateTo(1);
+        // Pero aquí se usa TabController explícito en el padre.
+
+        // Vamos a modificar la estructura para recibir el callback.
+        widget.onSuccess?.call();
+
+        // Generar PDF en segundo plano (sin bloquear UI)
+        generateAndUploadPdf(
+          context: context,
+          ref: ref,
+          requestId: requestId,
+          requestData: {
+            'request_type': _selectedType,
+            'start_date': _startDate!.toIso8601String(),
+            'end_date': _endDate!.toIso8601String(),
+          },
+          storage: storage,
+        ).then((success) {
+          // Opcional: Notificar si falló la generación del PDF, pero ya estamos en otra pantalla
+          if (!success && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Nota: El PDF se generará en breve (ver Historial)',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
         });
       }
     } catch (e) {
@@ -566,298 +578,368 @@ class _RequestsHistoryState extends ConsumerState<_RequestsHistory> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (err, stack) => Center(child: Text('Error: $err')),
           data: (requests) {
-            if (requests.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.folder_open, size: 64, color: Colors.grey[300]),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No tienes solicitudes registradas',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: requests.length,
-              itemBuilder: (context, index) {
-                final req = requests[index];
-                final status = req['status'] ?? 'PENDIENTE';
-                final color = _getStatusColor(status);
-
-                // Variables clave para el flujo
-                final pdfUrl = req['pdf_url']; // PDF Emitido por web
-                final signedUrl = req['signed_file_url']; // Archivo subido
-                final requestType = req['request_type'] ?? '';
-                final isGenerating = _generatingId == req['id'];
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: color.withOpacity(0.3), width: 1),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Column(
+            return RefreshIndicator(
+              onRefresh: () async {
+                // Forzar recarga invalidando el provider
+                // Esto hará que el StreamProvider se reinicie y vuelva a conectar/consultar
+                return ref.refresh(myRequestsProvider(employeeId));
+              },
+              child: requests.isEmpty
+                  ? ListView(
+                      // ListView para que funcione el RefreshIndicator incluso vacío
+                      physics: const AlwaysScrollableScrollPhysics(),
                       children: [
-                        ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: color.withOpacity(0.1),
-                            child: Icon(_getStatusIcon(status), color: color),
-                          ),
-                          title: Text(
-                            requestType,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 4),
-                              Text(
-                                '${_formatDate(req['start_date'])} - ${_formatDate(req['end_date'])}',
-                              ),
-                              Text('${req['total_days']} días'),
-                            ],
-                          ),
-                          trailing: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: color.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: color.withOpacity(0.5)),
-                            ),
-                            child: Text(
-                              status,
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        // === ZONA DE ACCIONES (Descarga y Subida) ===
-                        if (status == 'APROBADO' ||
-                            (status == 'PENDIENTE' && pdfUrl != null)) ...[
-                          const Divider(),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.6,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                // BOTÓN 1: DESCARGAR (Solo si existe PDF)
-                                if (pdfUrl != null)
-                                  TextButton.icon(
-                                    icon: const Icon(
-                                      Icons.download_rounded,
-                                      size: 20,
-                                    ),
-                                    label: const Text(
-                                      'Descargar',
-                                      style: TextStyle(fontSize: 12),
-                                    ),
-                                    onPressed: () async {
-                                      try {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Preparando descarga...',
-                                            ),
-                                            duration: Duration(seconds: 1),
-                                          ),
-                                        );
-
-                                        final response = await http.get(
-                                          Uri.parse(pdfUrl),
-                                        );
-
-                                        if (response.statusCode == 200) {
-                                          await Printing.sharePdf(
-                                            bytes: response.bodyBytes,
-                                            filename:
-                                                'papeleta_${req['id']}.pdf',
-                                          );
-                                        } else {
-                                          throw Exception(
-                                            'Error descarga: ${response.statusCode}',
-                                          );
-                                        }
-                                      } catch (e) {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Error: $e'),
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                                  )
-                                else if (status == 'PENDIENTE' && isGenerating)
-                                  const Padding(
-                                    padding: EdgeInsets.all(8.0),
-                                    child: SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  )
-                                else if (status == 'PENDIENTE' &&
-                                    requestType.contains('VACACIONES'))
-                                  // Botón para Generar si no existe
-                                  TextButton.icon(
-                                    icon: const Icon(
-                                      Icons.picture_as_pdf,
-                                      size: 20,
-                                      color: Colors.blue,
-                                    ),
-                                    label: const Text(
-                                      'Generar PDF',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.blue,
-                                      ),
-                                    ),
-                                    onPressed: () async {
-                                      setState(() => _generatingId = req['id']);
-                                      await generateAndUploadPdf(
-                                        context: context,
-                                        ref: ref,
-                                        requestId: req['id'],
-                                        requestData: req,
-                                        storage: storage,
-                                      );
-                                      if (mounted)
-                                        setState(() => _generatingId = null);
-                                    },
+                                Icon(
+                                  Icons.folder_open,
+                                  size: 64,
+                                  color: Colors.grey[300],
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No tienes solicitudes registradas',
+                                  style: TextStyle(color: Colors.grey[600]),
+                                ),
+                                const SizedBox(height: 16),
+                                const Text(
+                                  'Desliza para actualizar',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
                                   ),
-
-                                // BOTÓN 2: SUBIR FIRMADO
-                                if (signedUrl == null)
-                                  // Habilitar subida si: NO es vacaciones (es sustento médico) O SI es vacaciones y ya hay PDF para firmar
-                                  (!requestType.contains('VACACIONES') ||
-                                          pdfUrl != null)
-                                      ? ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                Colors.blue.shade700,
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                            ),
-                                          ),
-                                          icon: const Icon(
-                                            Icons.upload_file,
-                                            size: 16,
-                                          ),
-                                          label: const Text(
-                                            'Subir Firmado',
-                                            style: TextStyle(fontSize: 12),
-                                          ),
-                                          onPressed: () => _showUploadDialog(
-                                            context,
-                                            ref,
-                                            req['id'],
-                                            employeeId,
-                                          ),
-                                        )
-                                      : const SizedBox.shrink()
-                                else
-                                  // Si ya subió el documento
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(color: Colors.green),
-                                    ),
-                                    child: const Row(
-                                      children: [
-                                        Icon(
-                                          Icons.check_circle,
-                                          color: Colors.green,
-                                          size: 16,
-                                        ),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'Enviado',
-                                          style: TextStyle(
-                                            color: Colors.green,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                ),
                               ],
                             ),
                           ),
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      physics:
+                          const AlwaysScrollableScrollPhysics(), // Importante para RefreshIndicator
+                      itemCount: requests.length,
+                      itemBuilder: (context, index) {
+                        final req = requests[index];
+                        final status = req['status'] ?? 'PENDIENTE';
+                        final color = _getStatusColor(status);
 
-                          // Mensaje instruccional si está pendiente
-                          if (status == 'PENDIENTE' &&
-                              signedUrl == null &&
-                              pdfUrl != null)
-                            Container(
-                              width: double.infinity,
-                              color: Colors.orange.withOpacity(0.1),
-                              padding: const EdgeInsets.all(8),
-                              child: const Text(
-                                'Acción requerida: Descargar, firmar y subir el documento para su aprobación.',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.orange,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                        ],
+                        // Variables clave para el flujo
+                        final pdfUrl = req['pdf_url']; // PDF Emitido por web
+                        final signedUrl =
+                            req['signed_file_url']; // Archivo subido
+                        final requestType = req['request_type'] ?? '';
+                        final isGenerating = _generatingId == req['id'];
 
-                        // Botón Cancelar (Solo si es Pendiente y no ha subido firma aun)
-                        if (status == 'PENDIENTE' && signedUrl == null) ...[
-                          if (pdfUrl == null)
-                            const Divider(
-                              height: 1,
-                            ), // Divider si no se puso arriba
-                          TextButton.icon(
-                            onPressed: () =>
-                                _confirmCancel(context, ref, req['id']),
-                            icon: const Icon(
-                              Icons.cancel_outlined,
-                              color: Colors.red,
-                              size: 18,
-                            ),
-                            label: const Text(
-                              'CANCELAR SOLICITUD',
-                              style: TextStyle(color: Colors.red, fontSize: 12),
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color: color.withOpacity(0.3),
+                              width: 1,
                             ),
                           ),
-                        ],
-                      ],
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              children: [
+                                ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: color.withOpacity(0.1),
+                                    child: Icon(
+                                      _getStatusIcon(status),
+                                      color: color,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    requestType,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${_formatDate(req['start_date'])} - ${_formatDate(req['end_date'])}',
+                                      ),
+                                      Text('${req['total_days']} días'),
+                                    ],
+                                  ),
+                                  trailing: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: color.withOpacity(0.5),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      status,
+                                      style: TextStyle(
+                                        color: color,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                                // === ZONA DE ACCIONES (Descarga y Subida) ===
+                                if (status == 'APROBADO' ||
+                                    (status == 'PENDIENTE' &&
+                                        pdfUrl != null)) ...[
+                                  const Divider(),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 4.0,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceEvenly,
+                                      children: [
+                                        // BOTÓN 1: DESCARGAR (Solo si existe PDF)
+                                        if (pdfUrl != null)
+                                          TextButton.icon(
+                                            icon: const Icon(
+                                              Icons.download_rounded,
+                                              size: 20,
+                                            ),
+                                            label: const Text(
+                                              'Descargar',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                            onPressed: () async {
+                                              try {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'Preparando descarga...',
+                                                    ),
+                                                    duration: Duration(
+                                                      seconds: 1,
+                                                    ),
+                                                  ),
+                                                );
+
+                                                final response = await http.get(
+                                                  Uri.parse(pdfUrl),
+                                                );
+
+                                                if (response.statusCode ==
+                                                    200) {
+                                                  await Printing.sharePdf(
+                                                    bytes: response.bodyBytes,
+                                                    filename:
+                                                        'papeleta_${req['id']}.pdf',
+                                                  );
+                                                } else {
+                                                  throw Exception(
+                                                    'Error descarga: ${response.statusCode}',
+                                                  );
+                                                }
+                                              } catch (e) {
+                                                if (context.mounted) {
+                                                  ScaffoldMessenger.of(
+                                                    context,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                        'Error: $e',
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                              }
+                                            },
+                                          )
+                                        else if (status == 'PENDIENTE' &&
+                                            isGenerating)
+                                          const Padding(
+                                            padding: EdgeInsets.all(8.0),
+                                            child: SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                          )
+                                        else if (status == 'PENDIENTE' &&
+                                            requestType.contains('VACACIONES'))
+                                          // Botón para Generar si no existe
+                                          TextButton.icon(
+                                            icon: const Icon(
+                                              Icons.picture_as_pdf,
+                                              size: 20,
+                                              color: Colors.blue,
+                                            ),
+                                            label: const Text(
+                                              'Generar PDF',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.blue,
+                                              ),
+                                            ),
+                                            onPressed: () async {
+                                              setState(
+                                                () => _generatingId = req['id'],
+                                              );
+                                              await generateAndUploadPdf(
+                                                context: context,
+                                                ref: ref,
+                                                requestId: req['id'],
+                                                requestData: req,
+                                                storage: storage,
+                                              );
+                                              if (mounted)
+                                                setState(
+                                                  () => _generatingId = null,
+                                                );
+                                            },
+                                          ),
+
+                                        // BOTÓN 2: SUBIR FIRMADO
+                                        if (signedUrl == null)
+                                          // Habilitar subida si: NO es vacaciones (es sustento médico) O SI es vacaciones y ya hay PDF para firmar
+                                          (!requestType.contains(
+                                                    'VACACIONES',
+                                                  ) ||
+                                                  pdfUrl != null)
+                                              ? ElevatedButton.icon(
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor:
+                                                        Colors.blue.shade700,
+                                                    foregroundColor:
+                                                        Colors.white,
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 12,
+                                                        ),
+                                                  ),
+                                                  icon: const Icon(
+                                                    Icons.upload_file,
+                                                    size: 16,
+                                                  ),
+                                                  label: const Text(
+                                                    'Subir Firmado',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  onPressed: () =>
+                                                      _showUploadDialog(
+                                                        context,
+                                                        ref,
+                                                        req['id'],
+                                                        employeeId,
+                                                      ),
+                                                )
+                                              : const SizedBox.shrink()
+                                        else
+                                          // Si ya subió el documento
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.withOpacity(
+                                                0.1,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                              border: Border.all(
+                                                color: Colors.green,
+                                              ),
+                                            ),
+                                            child: const Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.check_circle,
+                                                  color: Colors.green,
+                                                  size: 16,
+                                                ),
+                                                SizedBox(width: 4),
+                                                Text(
+                                                  'Enviado',
+                                                  style: TextStyle(
+                                                    color: Colors.green,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  // Mensaje instruccional si está pendiente
+                                  if (status == 'PENDIENTE' &&
+                                      signedUrl == null &&
+                                      pdfUrl != null)
+                                    Container(
+                                      width: double.infinity,
+                                      color: Colors.orange.withOpacity(0.1),
+                                      padding: const EdgeInsets.all(8),
+                                      child: const Text(
+                                        'Acción requerida: Descargar, firmar y subir el documento para su aprobación.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.orange,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                ],
+
+                                // Botón Cancelar (Solo si es Pendiente y no ha subido firma aun)
+                                if (status == 'PENDIENTE' &&
+                                    signedUrl == null) ...[
+                                  if (pdfUrl == null)
+                                    const Divider(
+                                      height: 1,
+                                    ), // Divider si no se puso arriba
+                                  TextButton.icon(
+                                    onPressed: () =>
+                                        _confirmCancel(context, ref, req['id']),
+                                    icon: const Icon(
+                                      Icons.cancel_outlined,
+                                      color: Colors.red,
+                                      size: 18,
+                                    ),
+                                    label: const Text(
+                                      'CANCELAR SOLICITUD',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                );
-              },
             );
           },
         );

@@ -14,22 +14,33 @@ class TeamRepository {
   Future<List<Map<String, dynamic>>> getTeamAttendance(
     String supervisorId, {
     String? sede,
+    String? businessUnit,
     bool isAdmin = false,
   }) async {
     try {
-      // Usamos la nueva RPC get_daily_attendance_report para obtener TODOS
-      // los empleados, similar a la web.
-      // Filtramos por fecha actual (Hora Peru) en el cliente o modificando RPC.
-      // Para la app móvil de supervisor, queremos ver a TODO el personal.
+      // Usamos la nueva RPC get_daily_attendance_report que retorna JSONB
+      // { "data": [...], "total": ... }
+
+      // Determine filter values (Server-side filtering)
+      // FIX: Ensure we pass NULL instead of empty strings if not filtering
+      final filterSede = (!isAdmin && sede != null && sede.isNotEmpty)
+          ? sede
+          : null;
+      final filterBusinessUnit =
+          (!isAdmin && businessUnit != null && businessUnit.isNotEmpty)
+          ? businessUnit
+          : null;
 
       final response = await _supabase.rpc(
-        'get_daily_attendance_report', // Reutilizamos la lógica robusta de la web
+        'get_daily_attendance_report',
         params: {
           'p_date': DateTime.now().toIso8601String().split('T')[0], // Hoy
           'p_search': '',
-          'p_offset': 0,
+          'p_page': 1,
           'p_limit': 1000, // Traer todos (paginación alta)
           'p_status': 'all',
+          'p_sede': filterSede,
+          'p_business_unit': filterBusinessUnit,
         },
       );
 
@@ -37,15 +48,34 @@ class TeamRepository {
         return [];
       }
 
-      final allEmployees = List<Map<String, dynamic>>.from(response);
+      // IMPORTANTE: Si isAdmin es true, o si los filtros son null,
+      // y la RPC devuelve 0 registros, algo está fallando en la lógica de la RPC o permisos.
+      // Pero primero aseguremos que manejamos la respuesta.
 
-      // Filtrado local por Sede si NO es Admin y se proporcionó una sede
-      if (!isAdmin && sede != null && sede.isNotEmpty) {
-        final normalizedUserSede = sede.trim().toUpperCase();
-        return allEmployees.where((emp) {
-          final empSede = (emp['sede'] as String?)?.trim().toUpperCase();
-          return empSede == normalizedUserSede;
-        }).toList();
+      List<dynamic> dataList = [];
+      if (response is Map && response.containsKey('data')) {
+        dataList = response['data'] ?? [];
+      } else if (response is List) {
+        dataList = response;
+      }
+
+      final allEmployees = List<Map<String, dynamic>>.from(dataList);
+
+      // Si la lista sigue vacía y somos Admin, intentamos sin filtros por si acaso
+      if (allEmployees.isEmpty && isAdmin) {
+        final retryResponse = await _supabase.rpc(
+          'get_daily_attendance_report',
+          params: {
+            'p_date': DateTime.now().toIso8601String().split('T')[0],
+            'p_page': 1,
+            'p_limit': 1000,
+          },
+        );
+        if (retryResponse is Map && retryResponse.containsKey('data')) {
+          return List<Map<String, dynamic>>.from(retryResponse['data'] ?? []);
+        } else if (retryResponse is List) {
+          return List<Map<String, dynamic>>.from(retryResponse);
+        }
       }
 
       return allEmployees;

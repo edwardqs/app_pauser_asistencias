@@ -7,25 +7,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
-final teamAttendanceProvider =
-    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-      final storage = ref.watch(storageServiceProvider);
-      final supervisorId = storage.employeeId;
-      final sede = storage.sede;
-      final role = (storage.employeeType ?? '').toUpperCase();
+final teamAttendanceProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((
+  ref,
+) async {
+  final storage = ref.watch(storageServiceProvider);
+  final supervisorId = storage.employeeId;
+  final sede = storage.sede;
+  final businessUnit = storage.businessUnit; // Obtener unidad de negocio
+  final role = (storage.employeeType ?? '').toUpperCase();
 
-      if (supervisorId == null) return [];
+  if (supervisorId == null) return [];
 
-      final isAdmin =
-          role == 'ADMIN' ||
-          role == 'SUPER ADMIN' ||
-          role.contains('RRHH') ||
-          role.contains('GENTE');
+  final isAdmin = role == 'ADMIN' || role == 'SUPER ADMIN';
 
-      return ref
-          .watch(teamRepositoryProvider)
-          .getTeamAttendance(supervisorId, sede: sede, isAdmin: isAdmin);
-    });
+  // NOTA: Eliminamos 'RRHH' y 'GENTE' de isAdmin para que los Analistas y Jefes
+  // sean filtrados por su Sede y Unidad de Negocio, tal como solicitó el usuario.
+  // Si tienen sede asignada, verán solo su sede. Si es null, verán todo.
+
+  return ref
+      .watch(teamRepositoryProvider)
+      .getTeamAttendance(
+        supervisorId,
+        sede: sede,
+        businessUnit: businessUnit, // Pasar unidad de negocio
+        isAdmin: isAdmin,
+      );
+});
 
 // Provider para el filtro seleccionado (Notifier)
 class TeamFilterNotifier extends Notifier<String> {

@@ -106,14 +106,26 @@ class _ManualAttendanceScreenState
     try {
       final storage = ref.read(storageServiceProvider);
       final supervisorId = storage.employeeId;
+      final sede = storage.sede;
+      final businessUnit = storage.businessUnit;
+      final role = (storage.employeeType ?? '').toUpperCase();
 
       if (supervisorId == null) {
         throw Exception('No se encontró ID de supervisor');
       }
 
-      final team = await ref
-          .read(teamRepositoryProvider)
-          .getTeamAttendance(supervisorId);
+      final isAdmin =
+          role == 'ADMIN' ||
+          role == 'SUPER ADMIN' ||
+          role.contains('RRHH') ||
+          role.contains('GENTE');
+
+      final team = await ref.read(teamRepositoryProvider).getTeamAttendance(
+            supervisorId,
+            sede: sede,
+            businessUnit: businessUnit,
+            isAdmin: isAdmin,
+          );
 
       // Extraer empleados únicos
       final uniqueEmployees = <String, Map<String, dynamic>>{};

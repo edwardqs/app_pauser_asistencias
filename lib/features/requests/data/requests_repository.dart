@@ -235,4 +235,24 @@ class RequestsRepository {
         .eq('is_read', false);
     return count;
   }
+
+  /// Obtiene la autoridad firmante (Jefe Inmediato o Representante Legal)
+  Future<Map<String, dynamic>> getSigningAuthority(String employeeId) async {
+    try {
+      final response = await _supabase.rpc(
+        'get_signing_authority',
+        params: {'p_employee_id': employeeId},
+      );
+      return Map<String, dynamic>.from(response);
+    } catch (e) {
+      // Fallback seguro si falla el RPC
+      return {
+        'found': false,
+        'full_name': 'GIANCARLO URBINA GAITAN',
+        'dni': '18161904',
+        'position': 'REPRESENTANTE LEGAL',
+        'rule': 'ERROR_RPC',
+      };
+    }
+  }
 }

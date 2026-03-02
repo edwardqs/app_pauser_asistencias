@@ -506,6 +506,20 @@ Future<bool> generateAndUploadPdf({
     final endDate = DateTime.parse(requestData['end_date'].toString());
     final requestType = requestData['request_type'].toString();
 
+    // 0. Obtener Autoridad Firmante (Jefe Inmediato)
+    String repName = 'GIANCARLO URBINA GAITAN';
+    String repDni = '18161904';
+
+    if (storage.employeeId != null) {
+      final signingAuth = await ref
+          .read(requestsRepositoryProvider)
+          .getSigningAuthority(storage.employeeId!);
+
+      repName =
+          signingAuth['full_name']?.toString() ?? 'GIANCARLO URBINA GAITAN';
+      repDni = signingAuth['dni']?.toString() ?? '18161904';
+    }
+
     // 1. Generar HTML
     final htmlContent = PapeletaHtmlGenerator.generate(
       employeeName: employeeName,
@@ -516,6 +530,8 @@ Future<bool> generateAndUploadPdf({
       startDate: startDate,
       endDate: endDate,
       emissionDate: DateTime.now(),
+      employerRepresentante: repName,
+      employerDniRep: repDni,
     );
 
     // 2. Convertir a PDF (Uint8List) con timeout

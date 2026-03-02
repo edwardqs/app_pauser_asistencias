@@ -10,6 +10,8 @@ class PapeletaHtmlGenerator {
     required DateTime startDate,
     required DateTime endDate,
     required DateTime emissionDate,
+    String employerRepresentante = "GIANCARLO URBINA GAITAN",
+    String employerDniRep = "18161904",
   }) {
     final formattedStart = DateFormat('dd/MM/yyyy').format(startDate);
     final formattedEnd = DateFormat('dd/MM/yyyy').format(endDate);
@@ -45,8 +47,8 @@ class PapeletaHtmlGenerator {
     const employerRuc = "20600869940";
     const employerDomicilio =
         "JR. PEDRO MUÑIZ NRO. 253 DPTO. 1601 SEC. JORGE CHAVEZ LA LIBERTAD - TRUJILLO";
-    const employerRepresentante = "GIANCARLO URBINA GAITAN";
-    const employerDniRep = "18161904";
+    // const employerRepresentante = "GIANCARLO URBINA GAITAN"; // Replaced by param
+    // const employerDniRep = "18161904"; // Replaced by param
 
     // Estilos EXACTOS de RequestsList.jsx
     final styles = """

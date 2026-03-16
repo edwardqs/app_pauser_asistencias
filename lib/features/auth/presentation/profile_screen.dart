@@ -64,7 +64,7 @@ class ProfileScreen extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ).showSnackBar(const SnackBar(content: Text('Error al actualizar foto. Intenta nuevamente.')));
       }
     }
   }

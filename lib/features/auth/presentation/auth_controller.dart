@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:app_asistencias_pauser/core/services/auth_notifier.dart';
 import 'package:app_asistencias_pauser/features/attendance/presentation/home_screen.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
@@ -45,7 +46,7 @@ class AuthController extends AsyncNotifier<void> {
         final dni = response['dni'] as String;
         final sede = response['sede'] as String?;
         final businessUnit = response['business_unit'] as String?;
-        final profilePicture = response['profile_picture_url'] as String?;
+        final profilePicture = SupabaseConstants.fixStorageUrl(response['profile_picture_url'] as String?);
 
         // New fields for access control
         final canMarkAttendance =
@@ -64,11 +65,7 @@ class AuthController extends AsyncNotifier<void> {
               email: email,
               password: password,
             );
-            print("Login en Supabase Auth exitoso para: $email");
           } catch (authError) {
-            print(
-              "ADVERTENCIA: Falló autenticación en Supabase Auth: $authError",
-            );
             // No bloqueamos el login de la app, pero RLS podría fallar si se requiere escritura.
           }
         }

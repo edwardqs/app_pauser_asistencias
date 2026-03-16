@@ -47,22 +47,24 @@ class RequestsRepository {
     File? evidenceFile,
   }) async {
     try {
-      // 0. Validar superposición
-      final validation = await _supabase.rpc(
-        'check_vacation_overlap',
-        params: {
-          'p_employee_id': employeeId,
-          'p_start_date': startDate.toIso8601String().split('T')[0],
-          'p_end_date': endDate.toIso8601String().split('T')[0],
-          'p_exclude_request_id': null,
-        },
-      );
-
-      if (validation != null && validation['allowed'] == false) {
-        throw Exception(
-          validation['reason'] ??
-              'No se permite registrar la solicitud en estas fechas.',
+      // 0. Validar superposición solo para vacaciones
+      if (requestType == 'VACACIONES') {
+        final validation = await _supabase.rpc(
+          'check_vacation_overlap',
+          params: {
+            'p_employee_id': employeeId,
+            'p_start_date': startDate.toIso8601String().split('T')[0],
+            'p_end_date': endDate.toIso8601String().split('T')[0],
+            'p_exclude_request_id': null,
+          },
         );
+
+        if (validation != null && validation['allowed'] == false) {
+          throw Exception(
+            validation['reason'] ??
+                'No se permite registrar la solicitud en estas fechas.',
+          );
+        }
       }
 
       String? evidenceUrl;
@@ -221,10 +223,10 @@ class RequestsRepository {
 
   Future<void> markNotificationsAsRead(List<String> ids) async {
     if (ids.isEmpty) return;
-    await _supabase.rpc(
-      'mark_notifications_read',
-      params: {'p_notification_ids': ids},
-    );
+    await _supabase
+        .from('notifications')
+        .update({'is_read': true})
+        .inFilter('id', ids);
   }
 
   Future<int> getUnreadCount(String employeeId) async {
@@ -245,12 +247,11 @@ class RequestsRepository {
       );
       return Map<String, dynamic>.from(response);
     } catch (e) {
-      // Fallback seguro si falla el RPC
       return {
         'found': false,
-        'full_name': 'GIANCARLO URBINA GAITAN',
-        'dni': '18161904',
-        'position': 'REPRESENTANTE LEGAL',
+        'full_name': '',
+        'dni': '',
+        'position': '',
         'rule': 'ERROR_RPC',
       };
     }

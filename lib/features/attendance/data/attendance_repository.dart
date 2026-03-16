@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -22,7 +23,7 @@ class AttendanceRepository {
       );
       statusData = Map<String, dynamic>.from(response);
     } catch (e) {
-      print('Error en getEmployeeDayStatus RPC: $e');
+      if (kDebugMode) print('Error en getEmployeeDayStatus RPC: $e');
       // Inicializar con valores por defecto si falla el RPC
       statusData = {
         'date': DateTime.now().toIso8601String(),
@@ -39,11 +40,11 @@ class AttendanceRepository {
       try {
         final localAttendance = await getTodayAttendance(employeeId);
         if (localAttendance != null) {
-          print('Attendance found locally (RPC missed it): ${localAttendance['id']}');
+          if (kDebugMode) print('Attendance found locally (RPC missed it): ${localAttendance['id']}');
           statusData['attendance'] = localAttendance;
         }
       } catch (e) {
-        print('Error en fallback local: $e');
+        if (kDebugMode) print('Error en fallback local: $e');
       }
     }
 
@@ -129,7 +130,7 @@ class AttendanceRepository {
 
         evidenceUrl = _supabase.storage.from('evidence').getPublicUrl(fileName);
       } catch (e) {
-        print('Error uploading evidence: $e');
+        if (kDebugMode) print('Error uploading evidence: $e');
         // Continue without evidence or throw? Let's continue.
       }
     }
@@ -236,6 +237,98 @@ class AttendanceRepository {
     }
   }
 
+  static const _dowNames = {
+    1: 'LUNES', 2: 'MARTES', 3: 'MIÉRCOLES',
+    4: 'JUEVES', 5: 'VIERNES', 6: 'SÁBADO', 7: 'DOMINGO',
+  };
+
+  String _nextWorkDayName(int currentDow, List workDays) {
+    final days = workDays.map((d) => d as int).toList()..sort();
+    for (final d in days) {
+      if (d > currentDow) return _dowNames[d] ?? '';
+    }
+    return _dowNames[days.first] ?? '';
+  }
+
+  /// Obtiene el horario activo asignado al empleado para hoy.
+  /// Retorna:
+  ///   null                          → sin asignación de horario
+  ///   {'is_work_day': false, ...}   → tiene horario pero hoy no es día laboral
+  ///   {'is_work_day': true,  ...}   → horario válido para hoy
+  Future<Map<String, dynamic>?> getActiveSchedule(String employeeId) async {
+    try {
+      final today = DateTime.now();
+      final todayStr =
+          "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
+      final isodow = today.weekday;
+
+      final response = await _supabase
+          .from('employee_schedule_assignments')
+          .select('valid_from, valid_to, schedule:schedule_id(id, name, check_in_time, check_out_time, bonus_start, bonus_end, tolerance_minutes, work_days, schedule_type)')
+          .eq('employee_id', employeeId)
+          .lte('valid_from', todayStr)
+          .or('valid_to.is.null,valid_to.gte.$todayStr')
+          .order('valid_from', ascending: false);
+
+      if ((response as List).isEmpty) return null;
+
+      // Excluir asignaciones REGULAR cerradas hoy (valid_to = hoy):
+      // son transiciones, no horarios activos. Solo incluir:
+      //   - valid_to = null  (activo indefinido)
+      //   - valid_to = hoy  Y schedule_type != REGULAR  (evento especial de un día)
+      final List<Map<String, dynamic>> all = List<Map<String, dynamic>>.from(response)
+          .where((a) {
+            final validTo = a['valid_to'] as String?;
+            if (validTo == null) return true; // activo indefinido → incluir
+            final scheduleType = (a['schedule'] as Map<String, dynamic>?)?['schedule_type'] as String? ?? 'REGULAR';
+            if (scheduleType != 'REGULAR') return true; // especial de un día → incluir
+            return false; // REGULAR con valid_to = hoy → excluir (transición)
+          })
+          .toList();
+
+      final matching = all.where((a) {
+        final s = a['schedule'] as Map<String, dynamic>?;
+        if (s == null) return false;
+        final workDays = s['work_days'] as List?;
+        if (workDays == null || workDays.isEmpty) return true;
+        return workDays.contains(isodow);
+      }).toList();
+
+      // Hoy no está en los días laborales → indicar cuándo vuelve
+      if (matching.isEmpty) {
+        final anySchedule = all.first['schedule'] as Map<String, dynamic>?;
+        final workDays = anySchedule?['work_days'] as List? ?? [];
+        final todayName = _dowNames[isodow] ?? '';
+        final nextDay = workDays.isNotEmpty
+            ? _nextWorkDayName(isodow, workDays)
+            : '';
+        return {
+          'is_work_day': false,
+          'today_name': todayName,
+          'next_work_day': nextDay,
+          'schedule_name': anySchedule?['name'] ?? '',
+        };
+      }
+
+      // Especiales (FERIADO/DOMINGO) tienen prioridad sobre REGULAR
+      matching.sort((a, b) {
+        final aType = (a['schedule']?['schedule_type'] ?? 'REGULAR') as String;
+        final bType = (b['schedule']?['schedule_type'] ?? 'REGULAR') as String;
+        if (aType != 'REGULAR' && bType == 'REGULAR') return -1;
+        if (aType == 'REGULAR' && bType != 'REGULAR') return 1;
+        return 0;
+      });
+
+      final schedule = Map<String, dynamic>.from(
+          matching.first['schedule'] as Map<String, dynamic>);
+      schedule['is_work_day'] = true;
+      return schedule;
+    } catch (e) {
+      if (kDebugMode) print('Error fetching active schedule: $e');
+      return null;
+    }
+  }
+
   // NUEVO: Registrar falta injustificada automática (Triggered by Client)
   Future<void> registerUnjustifiedAbsence(String employeeId) async {
     try {
@@ -246,7 +339,7 @@ class AttendanceRepository {
       );
     } catch (e) {
       // Ignorar errores, es un proceso background best-effort
-      print('Error auto-registering absence: $e');
+      if (kDebugMode) print('Error auto-registering absence: $e');
     }
   }
 }

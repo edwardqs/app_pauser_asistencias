@@ -77,7 +77,7 @@ class _ManualAttendanceScreenState
         setState(() => _isLoadingReasons = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error cargando motivos: $e')));
+        ).showSnackBar(const SnackBar(content: Text('Error al cargar los motivos. Intenta nuevamente.')));
       }
     }
   }
@@ -106,25 +106,13 @@ class _ManualAttendanceScreenState
     try {
       final storage = ref.read(storageServiceProvider);
       final supervisorId = storage.employeeId;
-      final sede = storage.sede;
-      final businessUnit = storage.businessUnit;
-      final role = (storage.employeeType ?? '').toUpperCase();
 
       if (supervisorId == null) {
         throw Exception('No se encontró ID de supervisor');
       }
 
-      final isAdmin =
-          role == 'ADMIN' ||
-          role == 'SUPER ADMIN' ||
-          role.contains('RRHH') ||
-          role.contains('GENTE');
-
       final team = await ref.read(teamRepositoryProvider).getTeamAttendance(
             supervisorId,
-            sede: sede,
-            businessUnit: businessUnit,
-            isAdmin: isAdmin,
           );
 
       // Extraer empleados únicos
@@ -153,7 +141,7 @@ class _ManualAttendanceScreenState
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error cargando equipo: $e')));
+        ).showSnackBar(const SnackBar(content: Text('Error al cargar el equipo. Intenta nuevamente.')));
       }
     }
   }

@@ -185,10 +185,8 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
-      firstDate: DateTime(
-        2025,
-      ), // Permitir fechas pasadas (ej. descansos médicos)
-      lastDate: DateTime(2030), // Extender fecha límite futura
+      firstDate: DateTime(DateTime.now().year - 1), // Permitir fechas pasadas (ej. descansos médicos)
+      lastDate: DateTime(DateTime.now().year + 5),
     );
     if (picked != null) {
       setState(() {
@@ -303,7 +301,16 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(
+              e.toString().replaceAll('Exception:', '').trim().isNotEmpty &&
+                      !e.toString().contains('PostgrestException') &&
+                      !e.toString().contains('http')
+                  ? e.toString().replaceAll('Exception:', '').trim()
+                  : 'Ocurrió un error. Intenta nuevamente.',
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -507,17 +514,22 @@ Future<bool> generateAndUploadPdf({
     final requestType = requestData['request_type'].toString();
 
     // 0. Obtener Autoridad Firmante (Jefe Inmediato)
-    String repName = 'GIANCARLO URBINA GAITAN';
-    String repDni = '18161904';
+    if (storage.employeeId == null) {
+      throw Exception('No se pudo identificar al empleado.');
+    }
 
-    if (storage.employeeId != null) {
-      final signingAuth = await ref
-          .read(requestsRepositoryProvider)
-          .getSigningAuthority(storage.employeeId!);
+    final signingAuth = await ref
+        .read(requestsRepositoryProvider)
+        .getSigningAuthority(storage.employeeId!);
 
-      repName =
-          signingAuth['full_name']?.toString() ?? 'GIANCARLO URBINA GAITAN';
-      repDni = signingAuth['dni']?.toString() ?? '18161904';
+    final repName = signingAuth['full_name']?.toString() ?? '';
+    final repDni = signingAuth['dni']?.toString() ?? '';
+
+    if (signingAuth['found'] != true || repName.isEmpty || repDni.isEmpty) {
+      throw Exception(
+        'No se encontró la autoridad firmante para este empleado. '
+        'Contacte a Gestión del Talento.',
+      );
     }
 
     // 1. Generar HTML

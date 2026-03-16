@@ -1,4 +1,5 @@
 import 'dart:io' as java_io;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -12,71 +13,50 @@ class TeamRepository {
   TeamRepository(this._supabase);
 
   Future<List<Map<String, dynamic>>> getTeamAttendance(
-    String supervisorId, {
-    String? sede,
-    String? businessUnit,
-    bool isAdmin = false,
-  }) async {
+    String supervisorId,
+  ) async {
     try {
       // Usamos la nueva RPC get_daily_attendance_report que retorna JSONB
       // { "data": [...], "total": ... }
 
-      // Determine filter values (Server-side filtering)
-      // FIX: Ensure we pass NULL instead of empty strings if not filtering
-      final filterSede = (!isAdmin && sede != null && sede.isNotEmpty)
-          ? sede
-          : null;
-      final filterBusinessUnit =
-          (!isAdmin && businessUnit != null && businessUnit.isNotEmpty)
-          ? businessUnit
-          : null;
+      // El RPC maneja toda la lógica de filtrado por sede/unidad internamente
+      // basándose en p_employee_id. No enviamos p_sede ni p_business_unit desde
+      // Flutter — hacerlo sobreescribe la lógica de seguridad del RPC con un
+      // filtro de UI que restringe los resultados incorrectamente.
+      final rpcParams = <String, dynamic>{
+        'p_date': DateTime.now().toIso8601String().split('T')[0],
+        'p_page': 1,
+        'p_limit': 1000,
+        'p_employee_id': supervisorId,
+      };
+
+      if (kDebugMode) print('[TEAM] RPC params: $rpcParams');
 
       final response = await _supabase.rpc(
         'get_daily_attendance_report',
-        params: {
-          'p_date': DateTime.now().toIso8601String().split('T')[0], // Hoy
-          'p_search': '',
-          'p_page': 1,
-          'p_limit': 1000, // Traer todos (paginación alta)
-          'p_status': 'all',
-          'p_sede': filterSede,
-          'p_business_unit': filterBusinessUnit,
-        },
+        params: rpcParams,
       );
 
+      if (kDebugMode) print('[TEAM] Response type: ${response.runtimeType}');
+
       if (response == null) {
+        if (kDebugMode) print('[TEAM] Response is null');
         return [];
       }
-
-      // IMPORTANTE: Si isAdmin es true, o si los filtros son null,
-      // y la RPC devuelve 0 registros, algo está fallando en la lógica de la RPC o permisos.
-      // Pero primero aseguremos que manejamos la respuesta.
 
       List<dynamic> dataList = [];
       if (response is Map && response.containsKey('data')) {
         dataList = response['data'] ?? [];
+        if (kDebugMode) print('[TEAM] JSON response, data count: ${dataList.length}, total: ${response['total']}');
       } else if (response is List) {
         dataList = response;
+        if (kDebugMode) print('[TEAM] List response, count: ${dataList.length}');
+      } else {
+        if (kDebugMode) print('[TEAM] Unknown response format: $response');
       }
 
       final allEmployees = List<Map<String, dynamic>>.from(dataList);
-
-      // Si la lista sigue vacía y somos Admin, intentamos sin filtros por si acaso
-      if (allEmployees.isEmpty && isAdmin) {
-        final retryResponse = await _supabase.rpc(
-          'get_daily_attendance_report',
-          params: {
-            'p_date': DateTime.now().toIso8601String().split('T')[0],
-            'p_page': 1,
-            'p_limit': 1000,
-          },
-        );
-        if (retryResponse is Map && retryResponse.containsKey('data')) {
-          return List<Map<String, dynamic>>.from(retryResponse['data'] ?? []);
-        } else if (retryResponse is List) {
-          return List<Map<String, dynamic>>.from(retryResponse);
-        }
-      }
+      if (kDebugMode) print('[TEAM] Final employee count: ${allEmployees.length}');
 
       return allEmployees;
     } catch (e) {

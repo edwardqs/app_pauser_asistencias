@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -18,6 +19,7 @@ class StorageService {
   static const String keyProfilePicture = 'profile_picture';
   static const String keyCanMarkAttendance = 'can_mark_attendance';
   static const String keyRestrictionMessage = 'restriction_message';
+  static const String keyAppVersion = 'app_version';
 
   final SharedPreferences _prefs;
   final SupabaseClient _supabase;
@@ -107,9 +109,17 @@ class StorageService {
   String? get role => employeeType;
   String? get userName => fullName;
   String? get position => _prefs.getString(keyPosition);
-  String? get profilePicture => _prefs.getString(keyProfilePicture);
+  String? get profilePicture {
+    final url = SupabaseConstants.fixStorageUrl(_prefs.getString(keyProfilePicture));
+    return url.isEmpty ? null : url;
+  }
   bool get canMarkAttendance => _prefs.getBool(keyCanMarkAttendance) ?? true;
   String? get restrictionMessage => _prefs.getString(keyRestrictionMessage);
 
   bool get isAuthenticated => employeeId != null;
+
+  String? get appVersion => _prefs.getString(keyAppVersion);
+  Future<void> saveAppVersion(String version) async {
+    await _prefs.setString(keyAppVersion, version);
+  }
 }

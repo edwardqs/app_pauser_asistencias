@@ -35,7 +35,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(2000),
+      initialDate: DateTime(DateTime.now().year - 25),
       firstDate: DateTime(1950),
       lastDate: DateTime.now(),
       locale: const Locale('es', 'ES'),

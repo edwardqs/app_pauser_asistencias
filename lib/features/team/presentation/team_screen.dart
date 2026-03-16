@@ -1,4 +1,5 @@
 import 'dart:io' as io; // Alias para evitar conflicto
+import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/team/data/team_repository.dart';
 import 'package:file_picker/file_picker.dart';
@@ -12,26 +13,14 @@ final teamAttendanceProvider = FutureProvider.autoDispose<List<Map<String, dynam
 ) async {
   final storage = ref.watch(storageServiceProvider);
   final supervisorId = storage.employeeId;
-  final sede = storage.sede;
-  final businessUnit = storage.businessUnit; // Obtener unidad de negocio
-  final role = (storage.employeeType ?? '').toUpperCase();
 
   if (supervisorId == null) return [];
 
-  final isAdmin = role == 'ADMIN' || role == 'SUPER ADMIN';
-
-  // NOTA: Eliminamos 'RRHH' y 'GENTE' de isAdmin para que los Analistas y Jefes
-  // sean filtrados por su Sede y Unidad de Negocio, tal como solicitó el usuario.
-  // Si tienen sede asignada, verán solo su sede. Si es null, verán todo.
-
+  // El RPC get_daily_attendance_report aplica la lógica de filtrado por
+  // sede/unidad internamente según el rol del empleado (p_employee_id).
   return ref
       .watch(teamRepositoryProvider)
-      .getTeamAttendance(
-        supervisorId,
-        sede: sede,
-        businessUnit: businessUnit, // Pasar unidad de negocio
-        isAdmin: isAdmin,
-      );
+      .getTeamAttendance(supervisorId);
 });
 
 // Provider para el filtro seleccionado (Notifier)
@@ -375,7 +364,7 @@ class TeamScreen extends ConsumerWidget {
                       },
                       loading: () =>
                           const Center(child: CircularProgressIndicator()),
-                      error: (err, stack) => Center(child: Text('Error: $err')),
+                      error: (err, stack) => const Center(child: Text('Error al cargar datos. Intenta nuevamente.')),
                     ),
                   ),
                 ),
@@ -409,7 +398,7 @@ class TeamScreen extends ConsumerWidget {
   Widget _buildMemberCard(BuildContext context, Map<String, dynamic> member) {
     final fullName = member['full_name'] ?? 'Sin Nombre';
     final position = member['position'] ?? 'Cargo no definido';
-    final profilePic = member['profile_picture_url'];
+    final profilePic = SupabaseConstants.fixStorageUrl(member['profile_picture_url'] as String?);
     final checkIn = member['check_in'];
     final checkOut = member['check_out'];
     final isLate = member['is_late'] == true;
@@ -471,10 +460,10 @@ class TeamScreen extends ConsumerWidget {
                   CircleAvatar(
                     radius: 24,
                     backgroundColor: Colors.grey.shade200,
-                    backgroundImage: profilePic != null
+                    backgroundImage: profilePic.isNotEmpty
                         ? NetworkImage(profilePic)
                         : null,
-                    child: profilePic == null
+                    child: profilePic.isEmpty
                         ? Icon(Icons.person, color: Colors.grey.shade400)
                         : null,
                   ),
@@ -1100,8 +1089,16 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
             workDate: _selectedDate,
             checkIn: fullDateTime,
             // checkOut eliminado
-            recordType: _selectedType == 'IN' ? 'ASISTENCIA' : _selectedType,
-            subcategory: _selectedSubcategory, // Pasar subcategoría
+            recordType: _selectedType == 'IN'
+                ? 'ASISTENCIA'
+                : const ['ENFERMEDAD COMUN', 'MOTIVOS DE SALUD', 'MOTIVOS FAMILIARES']
+                        .contains(_selectedType)
+                    ? 'AUSENCIA'
+                    : _selectedType,
+            subcategory: const ['ENFERMEDAD COMUN', 'MOTIVOS DE SALUD', 'MOTIVOS FAMILIARES']
+                    .contains(_selectedType)
+                ? _selectedType          // motivo va en subcategory/absence_reason
+                : _selectedSubcategory,
             notes: _notesController.text,
             evidenceUrl: evidenceUrl,
             // isLate: _isLate, // Ya no se pasa, lo calcula el backend o es parte del recordType
@@ -1124,7 +1121,13 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
           errorMessage =
               'Ya existe un registro para este empleado en esta fecha.';
         } else if (e.toString().contains('Exception:')) {
-          errorMessage = e.toString().replaceAll('Exception:', '').trim();
+          final msg = e.toString().replaceAll('Exception:', '').trim();
+          // Solo mostrar mensaje si es legible (no contiene detalles técnicos)
+          final isReadable = !msg.contains('PostgrestException') &&
+              !msg.contains('StorageException') &&
+              !msg.contains('http') &&
+              msg.length < 200;
+          errorMessage = isReadable ? msg : 'Error al guardar. Intenta nuevamente.';
         }
 
         ScaffoldMessenger.of(context).showSnackBar(

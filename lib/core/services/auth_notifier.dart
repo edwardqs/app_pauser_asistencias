@@ -17,11 +17,12 @@ class AuthNotifier extends Notifier<AuthState> {
     // Escuchar cambios en la sesión de Supabase
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final event = data.event;
-      
-      if (event == AuthChangeEvent.signedOut || 
-          event == AuthChangeEvent.tokenRefreshed) { 
-         // La lógica principal se basa en el storage local por ahora, 
-         // pero podríamos reaccionar aquí si el token expira irremediablemente.
+
+      if (event == AuthChangeEvent.signedOut) {
+        // Token expirado o sesión cerrada remotamente → limpiar sesión local
+        ref.read(storageServiceProvider).clearSession().then((_) {
+          state = const AuthState(isAuthenticated: false, isLoading: false);
+        });
       }
     });
 

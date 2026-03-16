@@ -30,6 +30,13 @@ final employeeStatusProvider = FutureProvider.family
           .getEmployeeDayStatus(employeeId);
     });
 
+// Provider para obtener el horario activo del empleado (desde work_schedules)
+final activeScheduleProvider = FutureProvider.family
+    .autoDispose<Map<String, dynamic>?, String?>((ref, employeeId) async {
+      if (employeeId == null) return null;
+      return ref.read(attendanceRepositoryProvider).getActiveSchedule(employeeId);
+    });
+
 // 2. Provider para el estado de carga de la acción (WRITE State)
 final actionLoadingNotifierProvider = Provider.autoDispose<ValueNotifier<bool>>(
   (ref) {
@@ -128,7 +135,100 @@ class AttendanceLogic {
     }
   }
 
-  Future<void> markAttendance(BuildContext context, String employeeId) async {
+  Future<void> markAttendance(
+    BuildContext context,
+    String employeeId, {
+    bool isTardanza = false,
+    String? scheduleName,
+    String? checkInTime,
+  }) async {
+    // Confirmación antes de registrar
+    final now = DateTime.now();
+    final horaActual = DateFormat('hh:mm a').format(now);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(
+              isTardanza ? Icons.timer_off : Icons.touch_app,
+              color: isTardanza ? Colors.orange : const Color(0xFF2563EB),
+            ),
+            const SizedBox(width: 8),
+            const Text('Confirmar entrada', style: TextStyle(fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Hora actual: $horaActual',
+                style: const TextStyle(fontSize: 15)),
+            if (scheduleName != null) ...[
+              const SizedBox(height: 4),
+              Text('Horario: $scheduleName',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+            ],
+            if (checkInTime != null) ...[
+              const SizedBox(height: 4),
+              Text('Entrada programada: ${checkInTime.substring(0, 5)}',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+            ],
+            if (isTardanza) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber, color: Colors.orange.shade700, size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Se registrará con tardanza',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            const Text('¿Deseas registrar tu entrada ahora?',
+                style: TextStyle(fontSize: 14)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancelar',
+                style: TextStyle(color: Colors.grey[600])),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor:
+                  isTardanza ? Colors.orange : const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     // Check location permissions
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -267,6 +367,7 @@ class HomeScreen extends ConsumerWidget {
     // Use select to watch only specific parts if needed, or watch the whole provider
     // IMPORTANT: invalidate this provider on logout to prevent stale data
     final employeeStatusAsync = ref.watch(employeeStatusProvider(employeeId));
+    final scheduleData = ref.watch(activeScheduleProvider(employeeId)).valueOrNull;
     final loadingNotifier = ref.watch(actionLoadingNotifierProvider);
 
     final positionTitle = storage.position ?? 'Empleado';
@@ -322,11 +423,25 @@ class HomeScreen extends ConsumerWidget {
               effectiveAttendance != null &&
               effectiveAttendance['record_type'] != 'ASISTENCIA';
 
-          // Hora límite para TARDANZA: 07:00 (7 AM)
-          final tardanzaLimit = DateTime(now.year, now.month, now.day, 7, 0);
+          // Detectar si hoy es día laboral según el horario asignado
+          final bool isWorkDay = scheduleData == null ||
+              (scheduleData['is_work_day'] as bool? ?? true);
+          final String todayName =
+              scheduleData?['today_name'] as String? ?? '';
+          final String nextWorkDay =
+              scheduleData?['next_work_day'] as String? ?? '';
 
-          // Hora límite para CIERRE/INASISTENCIA: 18:00 (6 PM)
-          final absenceLimit = DateTime(now.year, now.month, now.day, 18, 0);
+          // Hora límite para TARDANZA: usa horario asignado o default 07:00
+          final checkInParts = (scheduleData?['check_in_time'] as String? ?? '07:00:00').split(':');
+          final tardanzaLimit = DateTime(now.year, now.month, now.day,
+              int.tryParse(checkInParts[0]) ?? 7,
+              int.tryParse(checkInParts[1]) ?? 0);
+
+          // Hora límite para CIERRE/INASISTENCIA: basada en check_out del horario o 18:00 por defecto
+          final checkOutParts = (scheduleData?['check_out_time'] as String? ?? '18:00:00').split(':');
+          final absenceLimit = DateTime(now.year, now.month, now.day,
+              int.tryParse(checkOutParts[0]) ?? 18,
+              int.tryParse(checkOutParts[1]) ?? 0);
 
           final isTardanza = now.isAfter(tardanzaLimit);
           final isPastAbsenceLimit = now.isAfter(absenceLimit);
@@ -339,9 +454,14 @@ class HomeScreen extends ConsumerWidget {
                   effectiveAttendance['absence_reason'] ==
                       'FALTA INJUSTIFICADA');
 
-          // 2. Si no hay registro y ya pasó la hora límite (Simulación cliente + Persistencia)
+          // 2. Si no hay registro, ya pasó la hora límite, Y es día laborable, Y no tiene solicitud activa
+          // scheduleData != null garantiza que el horario ya cargó antes de evaluar
           final shouldRegisterFalta =
-              effectiveAttendance == null && isPastAbsenceLimit;
+              effectiveAttendance == null &&
+              isPastAbsenceLimit &&
+              scheduleData != null &&
+              isWorkDay &&
+              !isOnVacation;
           final isFaltaInjustificada = isMarkedFalta || shouldRegisterFalta;
 
           // AUTO-REGISTRO DE FALTA:
@@ -667,68 +787,101 @@ class HomeScreen extends ConsumerWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               if (isOnVacation) ...[
-                                // VACATION STATE (Priority High)
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(32),
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [
-                                        Color(0xFF0EA5E9),
-                                        Color(0xFF0284C7),
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ),
-                                    borderRadius: BorderRadius.circular(32),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.blue.withOpacity(0.3),
-                                        blurRadius: 20,
-                                        offset: const Offset(0, 10),
+                                // VACATION / ACTIVE REQUEST STATE
+                                Builder(builder: (context) {
+                                  final requestType = vacation?['request_type'] as String? ?? 'VACACIONES';
+                                  final Map<String, Map<String, dynamic>> requestConfig = {
+                                    'VACACIONES': {
+                                      'icon': Icons.beach_access,
+                                      'title': '¡MODO VACACIONES!',
+                                      'subtitle': 'Disfruta tu descanso. No necesitas registrar asistencia.',
+                                      'colors': [Color(0xFF0EA5E9), Color(0xFF0284C7)],
+                                      'shadow': Color(0xFF0EA5E9),
+                                    },
+                                    'DESCANSO_MEDICO': {
+                                      'icon': Icons.medical_services,
+                                      'title': 'DESCANSO MÉDICO',
+                                      'subtitle': 'Tienes un descanso médico aprobado. Recupérate pronto.',
+                                      'colors': [Color(0xFF10B981), Color(0xFF059669)],
+                                      'shadow': Color(0xFF10B981),
+                                    },
+                                    'LICENCIA': {
+                                      'icon': Icons.assignment_ind,
+                                      'title': 'LICENCIA APROBADA',
+                                      'subtitle': 'Tu licencia está activa. No necesitas registrar asistencia.',
+                                      'colors': [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                                      'shadow': Color(0xFF8B5CF6),
+                                    },
+                                    'PERMISO': {
+                                      'icon': Icons.access_time,
+                                      'title': 'PERMISO APROBADO',
+                                      'subtitle': 'Tienes un permiso aprobado para hoy.',
+                                      'colors': [Color(0xFFF59E0B), Color(0xFFD97706)],
+                                      'shadow': Color(0xFFF59E0B),
+                                    },
+                                  };
+                                  final config = requestConfig[requestType] ?? requestConfig['VACACIONES']!;
+                                  final gradientColors = (config['colors'] as List).cast<Color>();
+
+                                  return Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(32),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: gradientColors,
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
                                       ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      const Icon(
-                                        Icons.beach_access,
-                                        size: 64,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(height: 16),
-                                      const Text(
-                                        '¡MODO VACACIONES!',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold,
+                                      borderRadius: BorderRadius.circular(32),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: (config['shadow'] as Color).withValues(alpha: 0.3),
+                                          blurRadius: 20,
+                                          offset: const Offset(0, 10),
                                         ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      if (vacation != null) ...[
+                                      ],
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          config['icon'] as IconData,
+                                          size: 64,
+                                          color: Colors.white,
+                                        ),
+                                        const SizedBox(height: 16),
                                         Text(
-                                          'Del ${DateFormat('d MMM').format(DateTime.parse(vacation['start_date']))} al ${DateFormat('d MMM').format(DateTime.parse(vacation['end_date']))}',
+                                          config['title'] as String,
                                           style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w500,
+                                            color: Colors.white,
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.bold,
                                           ),
+                                          textAlign: TextAlign.center,
                                         ),
                                         const SizedBox(height: 8),
-                                        const Text(
-                                          'Disfruta tu descanso. No necesitas registrar asistencia.',
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 14,
+                                        if (vacation != null) ...[
+                                          Text(
+                                            'Del ${DateFormat('d MMM').format(DateTime.parse(vacation['start_date']))} al ${DateFormat('d MMM').format(DateTime.parse(vacation['end_date']))}',
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w500,
+                                            ),
                                           ),
-                                        ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            config['subtitle'] as String,
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
                                       ],
-                                    ],
-                                  ),
-                                ).animate().scale(
+                                    ),
+                                  );
+                                }).animate().scale(
                                   curve: Curves.elasticOut,
                                   duration: 800.ms,
                                 ),
@@ -749,7 +902,7 @@ class HomeScreen extends ConsumerWidget {
                                     borderRadius: BorderRadius.circular(32),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.2),
+                                        color: Colors.black.withValues(alpha: 0.2),
                                         blurRadius: 20,
                                         offset: const Offset(0, 10),
                                       ),
@@ -782,6 +935,73 @@ class HomeScreen extends ConsumerWidget {
                                           fontSize: 14,
                                         ),
                                       ),
+                                    ],
+                                  ),
+                                ).animate().scale(
+                                  curve: Curves.elasticOut,
+                                  duration: 800.ms,
+                                ),
+                              ] else if (!isWorkDay) ...[
+                                // NON-WORK-DAY STATE
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(32),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF7C3AED),
+                                        Color(0xFF5B21B6),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(32),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Color(0xFF7C3AED).withValues(alpha: 0.3),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      const Icon(
+                                        Icons.calendar_today,
+                                        size: 64,
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'HOY $todayName NO ES TU\nHORARIO LABORAL',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      if (nextWorkDay.isNotEmpty) ...[
+                                        const SizedBox(height: 12),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(alpha: 0.2),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Text(
+                                            'REGRESA EL $nextWorkDay',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ).animate().scale(
@@ -870,6 +1090,96 @@ class HomeScreen extends ConsumerWidget {
                               ] else ...[
                                 // ACTION STATE
 
+                                // Horario asignado
+                                if (scheduleData != null) ...[
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    margin: const EdgeInsets.only(bottom: 16),
+                                    decoration: BoxDecoration(
+                                      color: isTardanza
+                                          ? Colors.orange.shade50
+                                          : Colors.blue.shade50,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: isTardanza
+                                            ? Colors.orange.shade200
+                                            : Colors.blue.shade200,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.schedule,
+                                          color: isTardanza
+                                              ? Colors.orange.shade700
+                                              : Colors.blue.shade700,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                scheduleData['name'] ?? 'Horario asignado',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 13,
+                                                  color: isTardanza
+                                                      ? Colors.orange.shade800
+                                                      : Colors.blue.shade800,
+                                                ),
+                                              ),
+                                              Text(
+                                                'Entrada: ${(scheduleData['check_in_time'] as String? ?? '').substring(0, 5)}  •  Salida: ${(scheduleData['check_out_time'] as String? ?? '').substring(0, 5)}',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: isTardanza
+                                                      ? Colors.orange.shade700
+                                                      : Colors.blue.shade700,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (isTardanza)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.orange.shade600,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Text(
+                                              'TARDE',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          )
+                                        else
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade600,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Text(
+                                              'A TIEMPO',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+
                                 // Main Check-In Button
                                 SizedBox(
                                   width: double.infinity,
@@ -887,6 +1197,9 @@ class HomeScreen extends ConsumerWidget {
                                                   ).markAttendance(
                                                     context,
                                                     employeeId,
+                                                    isTardanza: isTardanza,
+                                                    scheduleName: scheduleData?['name'] as String?,
+                                                    checkInTime: scheduleData?['check_in_time'] as String?,
                                                   );
                                                 }
                                               },

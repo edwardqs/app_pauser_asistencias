@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Fix: el motor TLS de Flutter rechaza la cadena de certificados del servidor
@@ -38,12 +37,12 @@ void main() async {
 
   // Clear session on fresh install or version update to prevent
   // stale sessions from persisting across device installs or builds.
-  final packageInfo = await PackageInfo.fromPlatform();
-  final currentVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+  // Update _kAppBuildSignature each time you publish a new APK.
+  const appBuildSignature = '1.0.0+2';
   final storedVersion = storageService.appVersion;
-  if (storedVersion != currentVersion) {
+  if (storedVersion != appBuildSignature) {
     await storageService.clearSession();
-    await storageService.saveAppVersion(currentVersion);
+    await storageService.saveAppVersion(appBuildSignature);
     try {
       await Supabase.instance.client.auth.signOut();
     } catch (_) {}

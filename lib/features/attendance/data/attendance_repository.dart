@@ -98,8 +98,14 @@ class AttendanceRepository {
       // Tardanzas: is_late = true
       query = query.eq('is_late', true);
     } else if (filter == 'absent') {
-      // Ausencias: record_type es AUSENCIA o INASISTENCIA
-      query = query.inFilter('record_type', ['AUSENCIA', 'INASISTENCIA']);
+      // Ausencias: record_type es AUSENCIA, INASISTENCIA o FALTA_INJUSTIFICADA
+      query = query.inFilter('record_type', [
+        'AUSENCIA',
+        'INASISTENCIA',
+        'FALTA_INJUSTIFICADA',
+      ]);
+    } else if (filter == 'vacation') {
+      query = query.eq('record_type', 'VACACIONES');
     }
 
     // Finalmente aplicamos orden y rango

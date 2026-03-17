@@ -293,6 +293,9 @@ class _AttendanceHistoryScreenState
                             'FALTA_INJUSTIFICADA',
                           ].contains(r['record_type']))
                       .length;
+                  final vacationCount = history
+                      .where((r) => r['record_type'] == 'VACACIONES')
+                      .length;
                   final showAll = historyState.filter == 'all';
 
                   return SizedBox(
@@ -317,6 +320,11 @@ class _AttendanceHistoryScreenState
                         _buildFilterChip(
                           'Ausencias', 'absent', historyState.filter,
                           count: showAll ? absentCount : null,
+                        ),
+                        const SizedBox(width: 8),
+                        _buildFilterChip(
+                          'Vacaciones', 'vacation', historyState.filter,
+                          count: showAll ? vacationCount : null,
                         ),
                       ],
                     ),
@@ -411,9 +419,11 @@ class _AttendanceHistoryScreenState
                             final isLate = record['is_late'] == true;
                             final hasBonus = record['has_bonus'] == true;
                             final recordType = record['record_type'];
+                            final isVacation = recordType == 'VACACIONES';
                             final isAbsence =
                                 recordType == 'INASISTENCIA' ||
-                                recordType == 'AUSENCIA';
+                                recordType == 'AUSENCIA' ||
+                                recordType == 'FALTA_INJUSTIFICADA';
                             final isValidated = record['validated'] == true;
                             final isRejected =
                                 record['validated'] == false &&
@@ -455,7 +465,27 @@ class _AttendanceHistoryScreenState
                                             ),
                                           ),
                                         ),
-                                        if (isAbsence)
+                                        if (isVacation)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.teal.shade100,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
+                                            child: Text(
+                                              'VACACIONES',
+                                              style: TextStyle(
+                                                color: Colors.teal.shade800,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          )
+                                        else if (isAbsence)
                                           Container(
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 8,

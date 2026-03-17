@@ -27,6 +27,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
+      HapticFeedback.lightImpact();
       final success = await ref
           .read(authControllerProvider.notifier)
           .signIn(dni: _dniController.text, password: _passwordController.text);
@@ -41,10 +42,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             behavior: SnackBarBehavior.floating,
           ),
         );
-        // Navigate to home
         context.go('/home');
       } else {
-        // Error handling is managed by state updates in the controller, but we can check state too
+        HapticFeedback.vibrate();
         final state = ref.read(authControllerProvider);
         if (state.hasError) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -119,7 +119,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ).animate().slideX(begin: -0.2, end: 0, duration: 600.ms),
                       const SizedBox(height: 4),
                       Text(
-                        'CORETIME - REGISTRO DE ASISTENCIAS',
+                        'Registro de Asistencias',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 32,
@@ -203,13 +203,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               hintText: '8 dígitos',
                               prefixIcon: const Icon(Icons.badge_outlined),
                               border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(14),
                                 borderSide: BorderSide(
                                   color: Colors.grey.shade200,
                                 ),
                               ),
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(14),
                                 borderSide: BorderSide(
                                   color: Colors.grey.shade200,
                                 ),
@@ -249,13 +249,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                               ),
                               border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(14),
                                 borderSide: BorderSide(
                                   color: Colors.grey.shade200,
                                 ),
                               ),
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(14),
                                 borderSide: BorderSide(
                                   color: Colors.grey.shade200,
                                 ),
@@ -276,6 +276,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: () => context.push('/forgot-password'),
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 48),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
                           child: Text(
                             '¿Olvidaste tu contraseña?',
                             style: TextStyle(
@@ -299,7 +303,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ), // Azul corporativo
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(14),
                             ),
                             elevation: 5,
                             shadowColor: Colors.blue.withValues(alpha: 0.3),
@@ -329,7 +333,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: Text(
                           'v1.0.0',
                           style: TextStyle(
-                            color: Colors.grey.shade300,
+                            color: Colors.grey.shade500,
                             fontSize: 12,
                           ),
                         ),

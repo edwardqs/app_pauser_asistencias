@@ -191,10 +191,11 @@ class _AttendanceHistoryScreenState
     }
   }
 
-  Widget _buildFilterChip(String label, String value, String currentFilter) {
+  Widget _buildFilterChip(String label, String value, String currentFilter, {int? count}) {
     final isSelected = currentFilter == value;
+    final displayLabel = count != null ? '$label ($count)' : label;
     return FilterChip(
-      label: Text(label),
+      label: Text(displayLabel),
       selected: isSelected,
       onSelected: (selected) {
         if (selected) {
@@ -273,35 +274,52 @@ class _AttendanceHistoryScreenState
                   ),
                 ),
 
-                // Filtros
-                SizedBox(
-                  height: 50,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: [
-                      _buildFilterChip('Todos', 'all', historyState.filter),
-                      const SizedBox(width: 8),
-                      _buildFilterChip(
-                        'Puntuales',
-                        'on_time',
-                        historyState.filter,
-                      ),
-                      const SizedBox(width: 8),
-                      _buildFilterChip(
-                        'Tardanzas',
-                        'late',
-                        historyState.filter,
-                      ),
-                      const SizedBox(width: 8),
-                      _buildFilterChip(
-                        'Ausencias',
-                        'absent',
-                        historyState.filter,
-                      ),
-                    ],
-                  ),
-                ),
+                // Filtros con contadores (calculados desde los registros cargados)
+                Builder(builder: (context) {
+                  // Contar desde los registros actuales (significativo cuando filter='all')
+                  final onTimeCount = history
+                      .where((r) =>
+                          r['record_type'] == 'ASISTENCIA' &&
+                          r['is_late'] != true)
+                      .length;
+                  final lateCount =
+                      history.where((r) => r['is_late'] == true).length;
+                  final absentCount = history
+                      .where((r) => [
+                            'AUSENCIA',
+                            'INASISTENCIA',
+                            'FALTA_INJUSTIFICADA',
+                          ].contains(r['record_type']))
+                      .length;
+                  final showAll = historyState.filter == 'all';
+
+                  return SizedBox(
+                    height: 50,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: [
+                        _buildFilterChip('Todos', 'all', historyState.filter,
+                            count: showAll ? history.length : null),
+                        const SizedBox(width: 8),
+                        _buildFilterChip(
+                          'Puntuales', 'on_time', historyState.filter,
+                          count: showAll ? onTimeCount : null,
+                        ),
+                        const SizedBox(width: 8),
+                        _buildFilterChip(
+                          'Tardanzas', 'late', historyState.filter,
+                          count: showAll ? lateCount : null,
+                        ),
+                        const SizedBox(width: 8),
+                        _buildFilterChip(
+                          'Ausencias', 'absent', historyState.filter,
+                          count: showAll ? absentCount : null,
+                        ),
+                      ],
+                    ),
+                  );
+                }),
 
                 const SizedBox(height: 16),
 

@@ -737,6 +737,97 @@ class _AttendanceHistoryScreenState
                                         ),
                                       ],
                                     ),
+                                    // Mini-mapa estático (solo si hay coordenadas)
+                                    if (locationIn != null) ...[
+                                      const SizedBox(height: 10),
+                                      Builder(
+                                        builder: (context) {
+                                          double? lat, lng;
+                                          try {
+                                            lat = (locationIn['lat'] as num?)
+                                                ?.toDouble();
+                                            lng = (locationIn['lng'] as num?)
+                                                ?.toDouble();
+                                          } catch (_) {}
+                                          if (lat == null || lng == null) {
+                                            return const SizedBox.shrink();
+                                          }
+                                          final mapUrl =
+                                              'https://staticmap.openstreetmap.de/staticmap.php'
+                                              '?center=$lat,$lng&zoom=15'
+                                              '&size=600x200'
+                                              '&markers=$lat,$lng,red-pushpin';
+                                          return GestureDetector(
+                                            onTap: () => _launchUrl(
+                                              'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+                                            ),
+                                            child: ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              child: Image.network(
+                                                mapUrl,
+                                                height: 110,
+                                                width: double.infinity,
+                                                fit: BoxFit.cover,
+                                                loadingBuilder: (_, child,
+                                                    progress) {
+                                                  if (progress == null) {
+                                                    return child;
+                                                  }
+                                                  return Container(
+                                                    height: 110,
+                                                    color: Colors.grey.shade100,
+                                                    child: const Center(
+                                                      child: SizedBox(
+                                                        width: 20,
+                                                        height: 20,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                errorBuilder:
+                                                    (_, __, ___) => Container(
+                                                  height: 60,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.grey.shade100,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .center,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.map_outlined,
+                                                        color: Colors
+                                                            .grey.shade400,
+                                                        size: 18,
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Text(
+                                                        'Ver en mapa',
+                                                        style: TextStyle(
+                                                          color: Colors
+                                                              .grey.shade500,
+                                                          fontSize: 13,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
                                     const SizedBox(height: 12),
                                   ],
                                 ),

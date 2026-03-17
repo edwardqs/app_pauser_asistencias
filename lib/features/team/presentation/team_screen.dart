@@ -793,47 +793,38 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
               children: [
                 Expanded(
                   child: InputDecorator(
-                    // No InkWell = No Clickable
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Fecha (Hoy)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(
-                        Icons.calendar_today,
-                        color: Colors.grey,
-                      ),
-                      fillColor: Color(0xFFF5F5F5),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.calendar_today, color: Colors.grey),
+                      suffixIcon: Icon(Icons.lock, size: 14, color: Colors.grey.shade400),
+                      fillColor: const Color(0xFFF5F5F5),
                       filled: true,
                       enabled: false,
                     ),
                     child: Text(
                       DateFormat('dd/MM/yyyy').format(_selectedDate),
-                      style: const TextStyle(color: Colors.black54),
+                      style: TextStyle(color: Colors.grey.shade500),
                     ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: InputDecorator(
-                    // No InkWell = No Clickable
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Hora (Ahora)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.access_time, color: Colors.grey),
-                      fillColor: Color(0xFFF5F5F5),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.access_time, color: Colors.grey),
+                      suffixIcon: Icon(Icons.lock, size: 14, color: Colors.grey.shade400),
+                      fillColor: const Color(0xFFF5F5F5),
                       filled: true,
                       enabled: false,
                     ),
                     child: Text(
                       DateFormat('hh:mm a').format(
-                        DateTime(
-                          2022,
-                          1,
-                          1,
-                          _selectedTime.hour,
-                          _selectedTime.minute,
-                        ),
+                        DateTime(2022, 1, 1, _selectedTime.hour, _selectedTime.minute),
                       ),
-                      style: const TextStyle(color: Colors.black54),
+                      style: TextStyle(color: Colors.grey.shade500),
                     ),
                   ),
                 ),

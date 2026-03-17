@@ -115,14 +115,23 @@ BEGIN
 
     -- -------------------------------------------------------------------------
     -- 1. DETERMINAR SI ES ADMIN (ve todo el personal)
+    --
+    -- Jerarquía comercial:
+    --   JEFE COMERCIAL    → is_admin (único que ve todos los empleados)
+    --   JEFE DE VENTAS    → ve su sede + business_unit (filtrado en CASO 2)
     -- -------------------------------------------------------------------------
     v_is_admin := FALSE;
     IF auth.email() = 'admin@pauser.com' THEN
         v_is_admin := TRUE;
     ELSIF v_user_role IN ('ADMIN', 'SUPER ADMIN', 'JEFE_RRHH', 'GERENTE GENERAL', 'SISTEMAS') THEN
         v_is_admin := TRUE;
+    -- JEFE COMERCIAL: cargo exacto, ve toda la empresa
+    ELSIF v_user_position = 'JEFE COMERCIAL' THEN
+        v_is_admin := TRUE;
+    -- JEFE DE GENTE Y GESTIÓN: ve toda la empresa
     ELSIF v_user_position ILIKE '%JEFE DE GENTE%' THEN
         v_is_admin := TRUE;
+    -- ANALISTA DE GENTE (ADM. CENTRAL + ADMINISTRACIÓN): ve toda la empresa
     ELSIF v_user_position ILIKE '%ANALISTA DE GENTE%' THEN
         IF v_user_sede ILIKE '%ADM%CENTRAL%' AND v_user_business_unit ILIKE '%ADMINISTRACI%' THEN
             v_is_admin := TRUE;
@@ -193,7 +202,14 @@ BEGIN
                         WHEN v_user_position ILIKE '%ANALISTA DE GENTE%' THEN
                             e.sede = v_user_sede AND e.business_unit = v_user_business_unit
 
-                        -- JEFE / GERENTE DE ÁREA
+                        -- JEFE DE VENTAS: ve su sede + business_unit (área COMERCIAL)
+                        -- No ve otras sedes aunque tengan el mismo business_unit
+                        WHEN v_user_position = 'JEFE DE VENTAS' THEN
+                            e.sede = v_user_sede
+                            AND e.business_unit = v_user_business_unit
+
+                        -- OTROS JEFES / GERENTES DE ÁREA
+                        -- Primero intenta filtrar por area_id, luego por business_unit+sede
                         WHEN (v_user_position ILIKE '%JEFE%' OR v_user_position ILIKE '%GERENTE%') THEN
                             CASE
                                 WHEN v_user_area_id IS NOT NULL THEN

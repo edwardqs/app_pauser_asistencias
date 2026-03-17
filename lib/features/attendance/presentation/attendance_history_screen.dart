@@ -1,8 +1,10 @@
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/attendance/data/attendance_repository.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // State Class para manejar la lista y el estado de paginación
@@ -737,7 +739,7 @@ class _AttendanceHistoryScreenState
                                         ),
                                       ],
                                     ),
-                                    // Mini-mapa estático (solo si hay coordenadas)
+                                    // Mini-mapa (solo si hay coordenadas)
                                     if (locationIn != null) ...[
                                       const SizedBox(height: 10),
                                       Builder(
@@ -752,11 +754,7 @@ class _AttendanceHistoryScreenState
                                           if (lat == null || lng == null) {
                                             return const SizedBox.shrink();
                                           }
-                                          final mapUrl =
-                                              'https://staticmap.openstreetmap.de/staticmap.php'
-                                              '?center=$lat,$lng&zoom=15'
-                                              '&size=600x200'
-                                              '&markers=$lat,$lng,red-pushpin';
+                                          final point = LatLng(lat, lng);
                                           return GestureDetector(
                                             onTap: () => _launchUrl(
                                               'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
@@ -764,63 +762,40 @@ class _AttendanceHistoryScreenState
                                             child: ClipRRect(
                                               borderRadius:
                                                   BorderRadius.circular(8),
-                                              child: Image.network(
-                                                mapUrl,
-                                                height: 110,
-                                                width: double.infinity,
-                                                fit: BoxFit.cover,
-                                                loadingBuilder: (_, child,
-                                                    progress) {
-                                                  if (progress == null) {
-                                                    return child;
-                                                  }
-                                                  return Container(
-                                                    height: 110,
-                                                    color: Colors.grey.shade100,
-                                                    child: const Center(
-                                                      child: SizedBox(
-                                                        width: 20,
-                                                        height: 20,
-                                                        child:
-                                                            CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                        ),
-                                                      ),
+                                              child: SizedBox(
+                                                height: 120,
+                                                child: FlutterMap(
+                                                  options: MapOptions(
+                                                    initialCenter: point,
+                                                    initialZoom: 15,
+                                                    interactionOptions:
+                                                        const InteractionOptions(
+                                                      flags:
+                                                          InteractiveFlag.none,
                                                     ),
-                                                  );
-                                                },
-                                                errorBuilder:
-                                                    (_, __, ___) => Container(
-                                                  height: 60,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.grey.shade100,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          8,
-                                                        ),
                                                   ),
-                                                  child: Row(
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .center,
-                                                    children: [
-                                                      Icon(
-                                                        Icons.map_outlined,
-                                                        color: Colors
-                                                            .grey.shade400,
-                                                        size: 18,
-                                                      ),
-                                                      const SizedBox(width: 6),
-                                                      Text(
-                                                        'Ver en mapa',
-                                                        style: TextStyle(
-                                                          color: Colors
-                                                              .grey.shade500,
-                                                          fontSize: 13,
+                                                  children: [
+                                                    TileLayer(
+                                                      urlTemplate:
+                                                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                                      userAgentPackageName:
+                                                          'com.pauser.app',
+                                                    ),
+                                                    MarkerLayer(
+                                                      markers: [
+                                                        Marker(
+                                                          point: point,
+                                                          width: 32,
+                                                          height: 32,
+                                                          child: const Icon(
+                                                            Icons.location_pin,
+                                                            color: Colors.red,
+                                                            size: 32,
+                                                          ),
                                                         ),
-                                                      ),
-                                                    ],
-                                                  ),
+                                                      ],
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ),

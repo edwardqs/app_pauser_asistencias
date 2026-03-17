@@ -763,14 +763,14 @@ class HomeScreen extends ConsumerWidget {
                                     shape: BoxShape.circle,
                                   ),
                                   child: SizedBox(
-                                    width: 60,
-                                    height: 60,
+                                    width: 48,
+                                    height: 48,
                                     child: AnalogClock(
                                       decoration: const BoxDecoration(
                                         color: Colors.transparent,
                                         shape: BoxShape.circle,
                                       ),
-                                      width: 60.0,
+                                      width: 48.0,
                                       isLive: true,
                                       hourHandColor: const Color(0xFF1E293B),
                                       minuteHandColor: const Color(0xFF1E293B),

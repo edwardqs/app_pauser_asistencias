@@ -1,5 +1,6 @@
 import 'dart:io' as io; // Alias para evitar conflicto
 import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
+import 'package:app_asistencias_pauser/core/presentation/widgets/skeleton_loader.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/team/data/team_repository.dart';
 import 'package:file_picker/file_picker.dart';
@@ -362,8 +363,7 @@ class TeamScreen extends ConsumerWidget {
                           ],
                         );
                       },
-                      loading: () =>
-                          const Center(child: CircularProgressIndicator()),
+                      loading: () => const SkeletonTeamList(),
                       error: (err, stack) => const Center(child: Text('Error al cargar datos. Intenta nuevamente.')),
                     ),
                   ),

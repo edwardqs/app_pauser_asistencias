@@ -400,10 +400,17 @@ class HomeScreen extends ConsumerWidget {
           // Si devuelve algo, confiamos en que es de hoy gracias al filtro del repo.
           final effectiveAttendance = attendance;
 
+          // Detectar si el registro fue rechazado por el supervisor
+          final isRejected =
+              effectiveAttendance != null &&
+              effectiveAttendance['validated'] == false &&
+              effectiveAttendance['validated_by'] != null;
+
           // Solo consideramos check-in activo si es de hoy, no tiene salida Y es de tipo ASISTENCIA o IN
-          // O cualquier tipo que NO sea ausencia
+          // O cualquier tipo que NO sea ausencia. Los rechazados NO cuentan como jornada iniciada.
           final isCheckedIn =
               effectiveAttendance != null &&
+              !isRejected &&
               effectiveAttendance['check_out'] == null &&
               effectiveAttendance['record_type'] != 'AUSENCIA' &&
               effectiveAttendance['record_type'] != 'INASISTENCIA' &&
@@ -481,6 +488,14 @@ class HomeScreen extends ConsumerWidget {
                   });
             });
           }
+
+          // Clave única del estado para AnimatedSwitcher (fade de 300ms)
+          final stateKey = isOnVacation ? 'vacation'
+              : !canMarkAttendance ? 'restricted'
+              : !isWorkDay ? 'nonworkday'
+              : isRejected ? 'rejected'
+              : (isFaltaInjustificada || isDayComplete || isCheckedIn) ? 'completed'
+              : 'checkin';
 
           return Stack(
             children: [
@@ -786,6 +801,14 @@ class HomeScreen extends ConsumerWidget {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 300),
+                                transitionBuilder: (child, anim) =>
+                                    FadeTransition(opacity: anim, child: child),
+                                child: Column(
+                                  key: ValueKey(stateKey),
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
                               if (isOnVacation) ...[
                                 // VACATION / ACTIVE REQUEST STATE
                                 Builder(builder: (context) {
@@ -1002,6 +1025,64 @@ class HomeScreen extends ConsumerWidget {
                                           ),
                                         ),
                                       ],
+                                    ],
+                                  ),
+                                ).animate().scale(
+                                  curve: Curves.elasticOut,
+                                  duration: 800.ms,
+                                ),
+                              ] else if (isRejected) ...[
+                                // REJECTED STATE
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(32),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade50,
+                                    borderRadius: BorderRadius.circular(32),
+                                    border: Border.all(
+                                      color: Colors.red.shade300,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        Icons.cancel,
+                                        size: 64,
+                                        color: Colors.red.shade600,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'Registro Rechazado',
+                                        style: TextStyle(
+                                          color: Colors.red.shade800,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        effectiveAttendance['notes'] != null &&
+                                                (effectiveAttendance['notes'] as String).isNotEmpty
+                                            ? 'Motivo: ${effectiveAttendance['notes']}'
+                                            : 'Tu registro fue rechazado por el supervisor.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.red.shade700,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      Text(
+                                        'Contacta a tu supervisor para más información.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.red.shade500,
+                                          fontSize: 12,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ).animate().scale(
@@ -1307,6 +1388,9 @@ class HomeScreen extends ConsumerWidget {
                                   ),
                                 ],
                               ],
+                                  ], // end inner Column children
+                                ), // end inner Column (key: stateKey)
+                              ), // end AnimatedSwitcher
                               const SizedBox(height: 20),
                             ],
                           ),

@@ -444,14 +444,21 @@ class TeamScreen extends ConsumerWidget {
 
     return GestureDetector(
       onLongPress: () {
-        // Habilitar registro manual al mantener presionado (solo para admins/supervisores)
         _showManualRegisterModal(context, employeeId, fullName);
       },
       child: Card(
         elevation: 2,
         margin: const EdgeInsets.only(bottom: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
+        clipBehavior: Clip.antiAlias,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Barra de color lateral para escaneo rápido
+              Container(width: 5, color: statusColor),
+              Expanded(
+                child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Column(
             children: [
@@ -628,6 +635,10 @@ class TeamScreen extends ConsumerWidget {
               ],
             ],
           ),
+        ),
+              ), // end Expanded (content)
+            ],
+          ), // end IntrinsicHeight Row
         ),
       ),
     );

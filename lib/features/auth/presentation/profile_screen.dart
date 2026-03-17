@@ -304,8 +304,8 @@ class ProfileScreen extends ConsumerWidget {
                                 context: context,
                                 builder: (context) => AlertDialog(
                                   title: const Text('Cerrar Sesión'),
-                                  content: const Text(
-                                    '¿Estás seguro que deseas salir?',
+                                  content: Text(
+                                    '¿Estás seguro que deseas salir, ${storage.fullName?.split(' ').first ?? 'usuario'}?',
                                   ),
                                   actions: [
                                     TextButton(

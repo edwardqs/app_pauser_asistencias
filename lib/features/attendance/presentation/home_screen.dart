@@ -1148,7 +1148,7 @@ class HomeScreen extends ConsumerWidget {
                                       const SizedBox(height: 8),
                                       Text(
                                         isFaltaInjustificada
-                                            ? 'No registraste asistencia antes de las 6:00 PM.'
+                                            ? 'No registraste asistencia antes de las ${DateFormat('h:mm a').format(absenceLimit)}.'
                                             : (isAbsence
                                                   ? 'Tu reporte ha sido enviado.'
                                                   : 'Entrada: ${lastCheckIn != null ? DateFormat('hh:mm a').format(DateTime.parse(lastCheckIn).toLocal()) : '--:--'}'),

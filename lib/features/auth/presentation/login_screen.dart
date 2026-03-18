@@ -119,7 +119,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ).animate().slideX(begin: -0.2, end: 0, duration: 600.ms),
                       const SizedBox(height: 4),
                       Text(
-                        'Registro de Asistencias',
+                        'CoreTime - Registro de Asistencias',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 32,

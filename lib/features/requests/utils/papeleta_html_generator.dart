@@ -42,6 +42,14 @@ class PapeletaHtmlGenerator {
         requestType.contains('SALUD') || requestType.contains('MEDICO');
     final isVacaciones = requestType.contains('VACACIONES');
 
+    final papeletaTitle = isVacaciones
+        ? 'PAPELETA DE VACACIONES'
+        : isSalud
+            ? 'PAPELETA DE SALUD / MÉDICO'
+            : requestType.contains('LICENCIA')
+                ? 'PAPELETA DE LICENCIA'
+                : 'PAPELETA DE PERMISO PERSONAL';
+
     // Datos del empleador (Hardcoded como en la web)
     const employerNombre = "PAUSER DISTRIBUCIONES S.A.C.";
     const employerRuc = "20600869940";
@@ -108,7 +116,7 @@ class PapeletaHtmlGenerator {
     String renderCopy(String type) {
       return """
       <div class="container">
-        <div class="header"><h1 class="title">PAPELETA DE VACACIONES</h1></div>
+        <div class="header"><h1 class="title">$papeletaTitle</h1></div>
         
         <!-- A -->
         <div class="section">

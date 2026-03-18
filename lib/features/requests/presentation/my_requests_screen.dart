@@ -247,6 +247,11 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
           ),
         );
 
+        // Guardar datos antes de limpiar el formulario (para pasarlos al PDF)
+        final capturedType = _selectedType;
+        final capturedStart = _startDate!;
+        final capturedEnd = _endDate!;
+
         // Limpiar formulario
         setState(() {
           _startDate = null;
@@ -257,20 +262,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
           _selectedType = 'VACACIONES';
         });
 
-        // 1. CAMBIO DE PESTAÑA AUTOMÁTICO
-        // Disparamos callback si existe, o intentamos buscar el TabController padre si fuera posible.
-        // Como _NewRequestForm es hijo de TabBarView controlado por _MyRequestsScreenState,
-        // necesitamos un mecanismo para comunicarnos hacia arriba.
-        // La forma más limpia sin reestructurar todo es usar un callback.
-        // Pero dado que no puedo cambiar el constructor fácilmente sin ver dónde se instancia,
-        // voy a asumir que el usuario prefiere que modifique la estructura para pasar el callback.
-
-        // Sin embargo, una solución rápida y efectiva en Flutter es usar un NotificationListener o
-        // un Provider compartido para el índice del tab.
-        // O más simple: DefaultTabController.of(context)?.animateTo(1);
-        // Pero aquí se usa TabController explícito en el padre.
-
-        // Vamos a modificar la estructura para recibir el callback.
         widget.onSuccess?.call();
 
         // Generar PDF en segundo plano (sin bloquear UI)
@@ -279,9 +270,9 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
           ref: ref,
           requestId: requestId,
           requestData: {
-            'request_type': _selectedType,
-            'start_date': _startDate!.toIso8601String(),
-            'end_date': _endDate!.toIso8601String(),
+            'request_type': capturedType,
+            'start_date': capturedStart.toIso8601String(),
+            'end_date': capturedEnd.toIso8601String(),
           },
           storage: storage,
         ).then((success) {

@@ -5,30 +5,38 @@
 
 DROP FUNCTION IF EXISTS public.get_daily_attendance_report(date, text, integer, integer);
 DROP FUNCTION IF EXISTS public.get_daily_attendance_report(date, text, integer, integer, text);
+DROP FUNCTION IF EXISTS public.get_daily_attendance_report(date, text, text, text, integer, integer, text);
+-- Versión con p_employee_id y orden de parámetros diferente
+DROP FUNCTION IF EXISTS public.get_daily_attendance_report(date, text, text, text, text, integer, integer, uuid);
 
 CREATE OR REPLACE FUNCTION public.get_daily_attendance_report(
     p_date date DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'America/Lima')::date,
     p_search text DEFAULT '',
-    p_offset int DEFAULT 0,
+    p_sede text DEFAULT NULL,
+    p_business_unit text DEFAULT NULL,
+    p_page int DEFAULT 1,
     p_limit int DEFAULT 20,
     p_status text DEFAULT 'all'
 )
 RETURNS TABLE (
-    total_rows bigint,      -- Total de empleados encontrados (para paginación)
+    total_rows bigint,
     employee_id uuid,
     full_name text,
     dni text,
     "position" text,
     sede text,
+    business_unit text,
     profile_picture_url text,
     attendance_id uuid,
     check_in timestamp with time zone,
     check_out timestamp with time zone,
     is_late boolean,
     record_type text,
-    status text,
+    computed_status text,
     validated boolean,
+    validated_by uuid,
     notes text,
+    absence_reason text,
     evidence_url text,
     location_in jsonb
 )
@@ -36,52 +44,58 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-    v_search_term text := '%' || p_search || '%';
+    v_search_term text := '%' || COALESCE(p_search, '') || '%';
+    v_offset int := (p_page - 1) * p_limit;
 BEGIN
     RETURN QUERY
     WITH all_employees AS (
-        SELECT 
+        SELECT
             e.id,
             e.full_name,
             e.dni,
             e.position,
             e.sede,
+            e.business_unit,
             e.profile_picture_url
         FROM public.employees e
         WHERE e.is_active = true
+        AND (p_sede IS NULL OR e.sede = p_sede)
+        AND (p_business_unit IS NULL OR e.business_unit = p_business_unit)
         AND (
-            p_search = '' OR 
-            e.full_name ILIKE v_search_term OR 
+            p_search IS NULL OR p_search = '' OR
+            e.full_name ILIKE v_search_term OR
             e.dni ILIKE v_search_term
         )
     ),
     joined_data AS (
-        SELECT 
+        SELECT
             ae.*,
             a.id as attendance_id,
             a.check_in,
             a.check_out,
             COALESCE(a.is_late, false) as is_late,
             a.record_type,
-            COALESCE(a.status, 'PENDIENTE') as status,
-            COALESCE(a.validated, false) as validated,
+            COALESCE(a.status, 'PENDIENTE') as computed_status,
+            -- validated: NULL = sin revisar, TRUE = aprobado, FALSE = rechazado
+            a.validated,
+            a.validated_by,
             COALESCE(a.notes, a.absence_reason) as notes,
+            a.absence_reason,
             a.evidence_url,
-            CASE 
-                WHEN a.location_in IS NULL THEN NULL 
-                ELSE a.location_in::jsonb 
+            CASE
+                WHEN a.location_in IS NULL THEN NULL
+                ELSE a.location_in::jsonb
             END as location_in
         FROM all_employees ae
         LEFT JOIN public.attendance a ON ae.id = a.employee_id AND a.work_date = p_date
     ),
     filtered_data AS (
         SELECT * FROM joined_data jd
-        WHERE 
-            CASE 
-                WHEN p_status = 'all' THEN true
+        WHERE
+            CASE
+                WHEN p_status = 'all' OR p_status IS NULL THEN true
                 WHEN p_status = 'on_time' THEN jd.record_type = 'ASISTENCIA' AND jd.is_late = false
                 WHEN p_status = 'late' THEN jd.is_late = true
-                -- 'absent' incluye tanto ausencias registradas como pendientes (sin registro)
                 WHEN p_status = 'absent' THEN (jd.record_type IN ('AUSENCIA', 'INASISTENCIA', 'FALTA JUSTIFICADA', 'AUSENCIA SIN JUSTIFICAR', 'FALTA_INJUSTIFICADA') OR jd.attendance_id IS NULL OR jd.record_type IS NULL)
                 WHEN p_status = 'medical' THEN jd.record_type = 'DESCANSO MÉDICO'
                 WHEN p_status = 'license' THEN jd.record_type = 'LICENCIA CON GOCE'
@@ -92,30 +106,33 @@ BEGIN
     counts AS (
         SELECT count(*) as total FROM filtered_data
     )
-    SELECT 
+    SELECT
         (SELECT total FROM counts) as total_rows,
         fd.id as employee_id,
         fd.full_name,
         fd.dni,
         fd.position,
         fd.sede,
+        fd.business_unit,
         fd.profile_picture_url,
         fd.attendance_id,
         fd.check_in,
         fd.check_out,
         fd.is_late,
         fd.record_type,
-        fd.status,
+        fd.computed_status,
         fd.validated,
+        fd.validated_by,
         fd.notes,
+        fd.absence_reason,
         fd.evidence_url,
         fd.location_in
     FROM filtered_data fd
-    ORDER BY 
+    ORDER BY
         CASE WHEN fd.attendance_id IS NOT NULL THEN 0 ELSE 1 END,
         fd.full_name ASC
     LIMIT p_limit
-    OFFSET p_offset;
+    OFFSET v_offset;
 END;
 $$;
 

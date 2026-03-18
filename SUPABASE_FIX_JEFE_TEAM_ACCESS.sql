@@ -114,18 +114,28 @@ BEGIN
     v_user_business_unit := UPPER(TRIM(COALESCE(v_user_business_unit, '')));
 
     -- -------------------------------------------------------------------------
-    -- 1. DETERMINAR SI ES ADMIN (ve todo el personal)
+    -- 1. DETERMINAR SI ES ADMIN (ve TODOS los empleados de la empresa)
     --
-    -- Jerarquía comercial:
-    --   JEFE COMERCIAL    → is_admin (único que ve todos los empleados)
-    --   JEFE DE VENTAS    → ve su sede + business_unit (filtrado en CASO 2)
+    -- Jerarquía confirmada con datos reales:
+    --   GERENTE GENERAL   → is_admin
+    --   JEFE COMERCIAL    → is_admin (cargo nacional, ADM. CENTRAL)
+    --   JEFE DE GENTE     → is_admin
+    --   ANALISTA DE GENTE (ADM. CENTRAL + ADMINISTRACIÓN) → is_admin
+    --
+    -- NO son admin (filtrados en CASO 2):
+    --   JEFE DE VENTAS       → su sede + business_unit
+    --   JEFE DE OPERACIONES  → toda el área OPERACIONES (nacional, desde ADM. CENTRAL)
+    --   JEFE DE ADM/FINANZAS → toda el área FINANZAS (nacional, desde ADM. CENTRAL)
+    --   COORDINADOR DE X     → misma lógica que JEFE: área + (nacional si ADM. CENTRAL, sede si regional)
     -- -------------------------------------------------------------------------
     v_is_admin := FALSE;
     IF auth.email() = 'admin@pauser.com' THEN
         v_is_admin := TRUE;
     ELSIF v_user_role IN ('ADMIN', 'SUPER ADMIN', 'JEFE_RRHH', 'GERENTE GENERAL', 'SISTEMAS') THEN
         v_is_admin := TRUE;
-    -- JEFE COMERCIAL: cargo exacto, ve toda la empresa
+    ELSIF v_user_role = 'GERENTE' THEN
+        v_is_admin := TRUE;
+    -- JEFE COMERCIAL: único jefe de área que ve toda la empresa (no solo su área)
     ELSIF v_user_position = 'JEFE COMERCIAL' THEN
         v_is_admin := TRUE;
     -- JEFE DE GENTE Y GESTIÓN: ve toda la empresa
@@ -136,7 +146,7 @@ BEGIN
         IF v_user_sede ILIKE '%ADM%CENTRAL%' AND v_user_business_unit ILIKE '%ADMINISTRACI%' THEN
             v_is_admin := TRUE;
         END IF;
-    ELSIF (v_user_position ILIKE '%PART TIME%' AND v_user_sede = 'ADM. CENTRAL' AND v_user_business_unit LIKE 'ADMINISTRACI%') THEN
+    ELSIF (v_user_position ILIKE '%PART TIME%' AND v_user_sede ILIKE '%ADM%CENTRAL%' AND v_user_business_unit ILIKE 'ADMINISTRACI%') THEN
         v_is_admin := TRUE;
     END IF;
 
@@ -198,31 +208,47 @@ BEGIN
                 -- NO ADMIN: filtrado por cargo
                 (NOT v_is_admin AND (
                     CASE
-                        -- ANALISTA DE GENTE (no-admin): su sede + unidad
+                        -- ── ANALISTA DE GENTE (no-admin) ──────────────────────────────
+                        -- Ve toda su sede + unidad (ej. analista GENTE en Chimbote)
                         WHEN v_user_position ILIKE '%ANALISTA DE GENTE%' THEN
                             e.sede = v_user_sede AND e.business_unit = v_user_business_unit
 
-                        -- JEFE DE VENTAS: ve su sede + business_unit (área COMERCIAL)
-                        -- No ve otras sedes aunque tengan el mismo business_unit
+                        -- ── JEFE DE VENTAS ────────────────────────────────────────────
+                        -- Caso especial: ve solo su sede + business_unit (no toda el área COMERCIAL)
+                        -- Ejemplo: JEFE DE VENTAS CHIMBOTE/BEBIDAS → solo ve BEBIDAS en CHIMBOTE
                         WHEN v_user_position = 'JEFE DE VENTAS' THEN
                             e.sede = v_user_sede
                             AND e.business_unit = v_user_business_unit
 
-                        -- OTROS JEFES / GERENTES DE ÁREA
-                        -- Primero intenta filtrar por area_id, luego por business_unit+sede
-                        WHEN (v_user_position ILIKE '%JEFE%' OR v_user_position ILIKE '%GERENTE%') THEN
+                        -- ── JEFE DE X / COORDINADOR DE X (misma jerarquía) ───────────
+                        -- Regla unificada: si está en ADM. CENTRAL → ve toda su área (nacional)
+                        --                 si está en sede regional  → ve su área solo en su sede
+                        -- Ejemplos:
+                        --   JEFE DE OPERACIONES (ADM. CENTRAL)    → toda el área OPERACIONES
+                        --   COORDINADOR DE OPERACIONES (CHIMBOTE) → OPERACIONES solo en CHIMBOTE
+                        --   JEFE DE ADM. Y FINANZAS (ADM. CENTRAL) → toda el área FINANZAS
+                        --   COORDINADOR SST (ADM. CENTRAL)         → toda el área GENTE
+                        WHEN (
+                            v_user_position ILIKE '%JEFE%'
+                            OR v_user_position ILIKE '%COORDINADOR%'
+                        ) THEN
                             CASE
+                                WHEN v_user_area_id IS NOT NULL AND v_user_sede ILIKE '%ADM%CENTRAL%' THEN
+                                    jp2.area_id = v_user_area_id              -- Nacional: todas las sedes
                                 WHEN v_user_area_id IS NOT NULL THEN
-                                    jp2.area_id = v_user_area_id         -- Su área (todas las sedes)
+                                    jp2.area_id = v_user_area_id
+                                    AND e.sede = v_user_sede                  -- Regional: solo su sede
                                 WHEN v_user_business_unit != '' THEN
-                                    e.business_unit = v_user_business_unit AND e.sede = v_user_sede
+                                    e.business_unit = v_user_business_unit
+                                    AND e.sede = v_user_sede                  -- Fallback: BU + sede
                                 WHEN v_user_sede != '' THEN
-                                    e.sede = v_user_sede                 -- Fallback: solo su sede
+                                    e.sede = v_user_sede                      -- Fallback final: solo sede
                                 ELSE FALSE
                             END
 
-                        -- SUPERVISOR / COORDINADOR: su área en su sede
-                        WHEN (v_user_position ILIKE '%SUPERVISOR%' OR v_user_position ILIKE '%COORDINADOR%') THEN
+                        -- ── SUPERVISOR ────────────────────────────────────────────────
+                        -- Siempre ve su área en su sede (no tiene alcance nacional)
+                        WHEN v_user_position ILIKE '%SUPERVISOR%' THEN
                             CASE
                                 WHEN v_user_area_id IS NOT NULL THEN
                                     jp2.area_id = v_user_area_id AND e.sede = v_user_sede
@@ -233,7 +259,7 @@ BEGIN
                                 ELSE FALSE
                             END
 
-                        -- Otros ANALISTAS: su área en su sede
+                        -- ── OTROS ANALISTAS ───────────────────────────────────────────
                         WHEN v_user_position ILIKE '%ANALISTA%' THEN
                             CASE
                                 WHEN v_user_area_id IS NOT NULL THEN

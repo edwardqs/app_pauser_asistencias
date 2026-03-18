@@ -4,6 +4,7 @@ import 'package:app_asistencias_pauser/features/attendance/presentation/attendan
 import 'package:app_asistencias_pauser/features/attendance/presentation/home_screen.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/login_screen.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/forgot_password_screen.dart';
+import 'package:app_asistencias_pauser/features/auth/presentation/splash_screen.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/profile_screen.dart';
 import 'package:app_asistencias_pauser/features/team/presentation/manual_attendance_screen.dart';
 import 'package:app_asistencias_pauser/features/team/presentation/team_screen.dart';
@@ -16,8 +17,9 @@ final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authNotifierProvider);
 
   return GoRouter(
-    initialLocation: authState.isAuthenticated ? '/home' : '/login',
+    initialLocation: '/splash',
     routes: [
+      GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/forgot-password',
@@ -57,8 +59,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
     redirect: (context, state) {
       final isLoggedIn = authState.isAuthenticated;
-      final isLoginRoute = state.uri.path == '/login';
-      final isForgotRoute = state.uri.path == '/forgot-password';
+      final path = state.uri.path;
+      final isLoginRoute = path == '/login';
+      final isForgotRoute = path == '/forgot-password';
+      final isSplashRoute = path == '/splash';
+
+      if (isSplashRoute) return null;
 
       if (!isLoggedIn && !isLoginRoute && !isForgotRoute) {
         return '/login';

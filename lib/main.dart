@@ -38,7 +38,7 @@ void main() async {
   // Clear session on fresh install or version update to prevent
   // stale sessions from persisting across device installs or builds.
   // Update _kAppBuildSignature each time you publish a new APK.
-  const appBuildSignature = '1.0.0+2';
+  const appBuildSignature = '1.2.0+3';
   final storedVersion = storageService.appVersion;
   if (storedVersion != appBuildSignature) {
     await storageService.clearSession();

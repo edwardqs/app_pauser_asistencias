@@ -301,7 +301,14 @@ class AttendanceLogic {
         // Ya no solicitamos motivo ni evidencia para tardanzas o inasistencias.
         // El sistema captura automáticamente la hora y ubicación.
 
+        // Para tardanza: nota con la hora real del horario asignado (no hardcoded 7:00)
         String? lateReason;
+        if (isTardanza && checkInTime != null) {
+          final timePart = checkInTime.length >= 5 ? checkInTime.substring(0, 5) : checkInTime;
+          lateReason = 'Ingreso con tardanza (>$timePart)';
+        } else if (isTardanza) {
+          lateReason = 'Ingreso con tardanza';
+        }
         File? evidenceFile;
 
         // Procedemos directamente al check-in
@@ -315,7 +322,7 @@ class AttendanceLogic {
               employeeId: employeeId,
               lat: position.latitude,
               lng: position.longitude,
-              lateReason: lateReason, // null
+              lateReason: lateReason,
               evidenceFile: evidenceFile, // null
             );
 
@@ -812,7 +819,18 @@ class HomeScreen extends ConsumerWidget {
                               if (isOnVacation) ...[
                                 // VACATION / ACTIVE REQUEST STATE
                                 Builder(builder: (context) {
-                                  final requestType = vacation?['request_type'] as String? ?? 'VACACIONES';
+                                  final rawType = vacation?['request_type'] as String? ?? 'VACACIONES';
+                                  // Normalizar al key del config (los valores reales de BD pueden variar)
+                                  String requestType;
+                                  if (rawType.contains('SALUD') || rawType.contains('MÉDICO') || rawType.contains('MEDICO') || rawType == 'DESCANSO_MEDICO') {
+                                    requestType = 'SALUD / MÉDICO';
+                                  } else if (rawType.contains('PERMISO')) {
+                                    requestType = 'PERMISO PERSONAL';
+                                  } else if (rawType.contains('LICENCIA')) {
+                                    requestType = 'LICENCIA';
+                                  } else {
+                                    requestType = rawType; // VACACIONES u otros
+                                  }
                                   final Map<String, Map<String, dynamic>> requestConfig = {
                                     'VACACIONES': {
                                       'icon': Icons.beach_access,
@@ -821,7 +839,7 @@ class HomeScreen extends ConsumerWidget {
                                       'colors': [Color(0xFF0EA5E9), Color(0xFF0284C7)],
                                       'shadow': Color(0xFF0EA5E9),
                                     },
-                                    'DESCANSO_MEDICO': {
+                                    'SALUD / MÉDICO': {
                                       'icon': Icons.medical_services,
                                       'title': 'DESCANSO MÉDICO',
                                       'subtitle': 'Tienes un descanso médico aprobado. Recupérate pronto.',
@@ -835,7 +853,7 @@ class HomeScreen extends ConsumerWidget {
                                       'colors': [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
                                       'shadow': Color(0xFF8B5CF6),
                                     },
-                                    'PERMISO': {
+                                    'PERMISO PERSONAL': {
                                       'icon': Icons.access_time,
                                       'title': 'PERMISO APROBADO',
                                       'subtitle': 'Tienes un permiso aprobado para hoy.',

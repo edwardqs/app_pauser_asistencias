@@ -146,7 +146,7 @@ class _NewRequestForm extends ConsumerStatefulWidget {
 
 class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
   final _formKey = GlobalKey<FormState>();
-  String _selectedType = 'VACACIONES';
+  String? _selectedType; // null obliga al usuario a elegir explícitamente
   DateTime? _startDate;
   DateTime? _endDate;
   final _reasonController = TextEditingController();
@@ -230,7 +230,7 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
           .read(requestsRepositoryProvider)
           .createRequest(
             employeeId: employeeId,
-            requestType: _selectedType,
+            requestType: _selectedType!,
             startDate: _startDate!,
             endDate: _endDate!,
             reason: _reasonController.text,
@@ -259,7 +259,7 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
           _reasonController.clear();
           _evidenceFile = null;
           _evidenceFileName = null;
-          _selectedType = 'VACACIONES';
+          _selectedType = null;
         });
 
         widget.onSuccess?.call();
@@ -334,6 +334,7 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
             // TIPO DE SOLICITUD
             DropdownButtonFormField<String>(
               value: _selectedType,
+              hint: const Text('Seleccione un tipo'),
               decoration: InputDecoration(
                 labelText: 'Tipo de Solicitud',
                 border: OutlineInputBorder(
@@ -347,7 +348,8 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
               items: _requestTypes
                   .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                   .toList(),
-              onChanged: (v) => setState(() => _selectedType = v!),
+              onChanged: (v) => setState(() => _selectedType = v),
+              validator: (v) => (v == null || v.isEmpty) ? 'Seleccione el tipo de solicitud' : null,
             ),
             const SizedBox(height: 16),
 
@@ -416,8 +418,8 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
             ),
             const SizedBox(height: 16),
 
-            // ADJUNTAR EVIDENCIA (Solo si no es Vacaciones)
-            if (_selectedType != 'VACACIONES') ...[
+            // ADJUNTAR EVIDENCIA (Solo si eligió un tipo y no es Vacaciones)
+            if (_selectedType != null && _selectedType != 'VACACIONES') ...[
               OutlinedButton.icon(
                 onPressed: _pickFile,
                 style: OutlinedButton.styleFrom(

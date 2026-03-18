@@ -23,6 +23,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   bool _isLoading = false;
   bool _isSuccess = false;
   bool _isPasswordVisible = false;
+  String _docType = 'DNI'; // 'DNI' o 'CE'
 
   @override
   void dispose() {
@@ -161,17 +162,65 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             ),
             const SizedBox(height: 16),
 
-            // DNI
+            // Selector DNI / CE
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.all(4),
+              child: Row(
+                children: ['DNI', 'CE'].map((type) {
+                  final selected = _docType == type;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _docType = type;
+                          _dniController.clear();
+                          _formKey.currentState?.reset();
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: selected ? Colors.blue.shade700 : Colors.transparent,
+                          borderRadius: BorderRadius.circular(9),
+                          boxShadow: selected
+                              ? [BoxShadow(color: Colors.blue.shade200, blurRadius: 6, offset: const Offset(0, 2))]
+                              : [],
+                        ),
+                        child: Text(
+                          type,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: selected ? Colors.white : Colors.grey.shade600,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ).animate().fadeIn(delay: 250.ms),
+
+            const SizedBox(height: 16),
+
+            // Campo de documento
             TextFormField(
               controller: _dniController,
               keyboardType: TextInputType.number,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(8),
+                if (_docType == 'DNI')
+                  LengthLimitingTextInputFormatter(8),
               ],
               decoration: InputDecoration(
-                labelText: 'DNI',
-                hintText: '8 dígitos',
+                labelText: _docType == 'DNI' ? 'DNI' : 'Carné de Extranjería',
+                hintText: _docType == 'DNI' ? '8 dígitos' : 'Número de CE',
                 prefixIcon: const Icon(Icons.badge_outlined),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -181,7 +230,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) return 'Requerido';
-                if (value.length != 8) return 'DNI inválido';
+                if (_docType == 'DNI' && value.length != 8) return 'El DNI debe tener 8 dígitos';
+                if (_docType == 'CE' && value.length < 6) return 'CE inválido';
                 return null;
               },
             ).animate().fadeIn(delay: 300.ms),

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 final teamAttendanceProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((
   ref,
@@ -405,6 +406,7 @@ class TeamScreen extends ConsumerWidget {
     final notes = member['notes'];
     final recordType = member['record_type'];
     final employeeId = member['employee_id'];
+    final locationIn = member['location_in'] as Map<String, dynamic>?;
 
     Color statusColor;
     String statusText;
@@ -587,6 +589,27 @@ class TeamScreen extends ConsumerWidget {
                                   fontSize: 10,
                                   color: Colors.red,
                                   fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          if (locationIn != null)
+                            GestureDetector(
+                              onTap: () {
+                                final lat = locationIn['lat'];
+                                final lng = locationIn['lng'];
+                                if (lat != null && lng != null) {
+                                  final uri = Uri.parse(
+                                    'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+                                  );
+                                  launchUrl(uri, mode: LaunchMode.externalApplication);
+                                }
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.only(left: 8),
+                                child: Icon(
+                                  Icons.map_outlined,
+                                  size: 18,
+                                  color: Colors.redAccent,
                                 ),
                               ),
                             ),

@@ -52,68 +52,49 @@ class AttendanceRepository {
   }
 
   Future<Map<String, dynamic>?> getTodayAttendance(String employeeId) async {
-    // CAMBIO: Obtenemos el registro que coincida explícitamente con la fecha actual de Perú
-    // Esto asegura que la app móvil sepa si "hoy" ya marcó o no, independientemente de la hora UTC.
+    // Usa RPC SECURITY DEFINER para bypassear RLS (app no usa Supabase Auth)
     final now = DateTime.now();
     final todayStr =
         "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-    final response = await _supabase
-        .from('attendance')
-        .select()
-        .eq('employee_id', employeeId)
-        .eq('work_date', todayStr) // Filtro explícito por fecha
-        .maybeSingle();
+    final response = await _supabase.rpc(
+      'get_employee_attendance_history',
+      params: {
+        'p_employee_id': employeeId,
+        'p_page': 0,
+        'p_page_size': 1,
+        'p_filter': 'all',
+      },
+    );
 
-    return response;
+    final list = response as List?;
+    if (list == null || list.isEmpty) return null;
+
+    final record = Map<String, dynamic>.from(list.first as Map);
+    // Solo retornar si el registro más reciente es de hoy
+    if (record['work_date'].toString().startsWith(todayStr)) {
+      return record;
+    }
+    return null;
   }
 
   Future<List<Map<String, dynamic>>> getAttendanceHistory(
     String employeeId, {
     int page = 0,
     int pageSize = 20,
-    String filter = 'all', // 'all', 'on_time', 'late', 'absent'
+    String filter = 'all', // 'all', 'on_time', 'late', 'absent', 'vacation'
   }) async {
-    final start = page * pageSize;
-    final end = start + pageSize - 1;
-
-    // IMPORTANTE: Definir 'query' explícitamente como PostgrestFilterBuilder
-    // para poder encadenar filtros (eq, neq, not, inFilter) ANTES de transformaciones (order, range).
-    // El error anterior ocurría porque 'order' devuelve un PostgrestTransformBuilder que ya no acepta filtros WHERE.
-
-    var query = _supabase
-        .from('attendance')
-        .select() // Esto devuelve PostgrestFilterBuilder
-        .eq('employee_id', employeeId);
-
-    // Aplicar filtros ANTES de ordenar/paginar
-    if (filter == 'on_time') {
-      // Puntuales: tienen check_in, no son tarde, y no son ausencias
-      query = query
-          .not('check_in', 'is', null)
-          .eq('is_late', false)
-          .neq('record_type', 'AUSENCIA')
-          .neq('record_type', 'INASISTENCIA');
-    } else if (filter == 'late') {
-      // Tardanzas: is_late = true
-      query = query.eq('is_late', true);
-    } else if (filter == 'absent') {
-      // Ausencias: record_type es AUSENCIA, INASISTENCIA o FALTA_INJUSTIFICADA
-      query = query.inFilter('record_type', [
-        'AUSENCIA',
-        'INASISTENCIA',
-        'FALTA_INJUSTIFICADA',
-      ]);
-    } else if (filter == 'vacation') {
-      query = query.eq('record_type', 'VACACIONES');
-    }
-
-    // Finalmente aplicamos orden y rango
-    final response = await query
-        .order('created_at', ascending: false)
-        .range(start, end);
-
-    return List<Map<String, dynamic>>.from(response);
+    // Usa RPC SECURITY DEFINER para bypassear RLS (app no usa Supabase Auth)
+    final response = await _supabase.rpc(
+      'get_employee_attendance_history',
+      params: {
+        'p_employee_id': employeeId,
+        'p_page': page,
+        'p_page_size': pageSize,
+        'p_filter': filter,
+      },
+    );
+    return List<Map<String, dynamic>>.from(response as List);
   }
 
   Future<void> checkIn({

@@ -30,11 +30,18 @@ final employeeStatusProvider = FutureProvider.family
           .getEmployeeDayStatus(employeeId);
     });
 
-// Provider para obtener el horario activo del empleado (desde work_schedules)
+// Provider para obtener el horario activo del empleado (desde work_schedules) - solo primero
 final activeScheduleProvider = FutureProvider.family
     .autoDispose<Map<String, dynamic>?, String?>((ref, employeeId) async {
       if (employeeId == null) return null;
       return ref.read(attendanceRepositoryProvider).getActiveSchedule(employeeId);
+    });
+
+// Provider para obtener TODOS los horarios activos del empleado (para turnos múltiples)
+final activeSchedulesProvider = FutureProvider.family
+    .autoDispose<List<Map<String, dynamic>>, String?>((ref, employeeId) async {
+      if (employeeId == null) return [];
+      return ref.read(attendanceRepositoryProvider).getActiveSchedules(employeeId);
     });
 
 // 2. Provider para el estado de carga de la acción (WRITE State)
@@ -52,6 +59,101 @@ class AttendanceLogic {
   final WidgetRef ref;
 
   AttendanceLogic(this.ref);
+
+  Future<void> selectShiftAndMarkAttendance(
+    BuildContext context,
+    String employeeId,
+    List<Map<String, dynamic>> schedules, {
+    bool isTardanza = false,
+  }) async {
+    if (schedules.isEmpty) return;
+
+    if (schedules.length == 1) {
+      // Solo un horario, marcar directo
+      final schedule = schedules.first;
+      await markAttendance(
+        context,
+        employeeId,
+        isTardanza: isTardanza,
+        scheduleName: schedule['name'] as String?,
+        checkInTime: schedule['check_in_time'] as String?,
+        shift: schedule['shift'] as String?,
+      );
+      return;
+    }
+
+    // Múltiples horarios - mostrar selector
+    final selected = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.schedule, color: Color(0xFF2563EB)),
+            SizedBox(width: 8),
+            Text('Seleccionar Turno', style: TextStyle(fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '¿Qué turno deseas registrar?',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 16),
+            ...schedules.map((s) {
+              final shiftName = s['shift'] as String? ?? 'UNICO';
+              final shiftLabel = shiftName == 'MAÑANA' ? '☀ Mañana'
+                  : shiftName == 'TARDE' ? '🌤 Tarde'
+                  : shiftName == 'NOCHE' ? '🌙 Noche'
+                  : '— Unico —';
+              final checkIn = (s['check_in_time'] as String? ?? '').substring(0, 5);
+              final checkOut = (s['check_out_time'] as String? ?? '').substring(0, 5);
+              return ListTile(
+                leading: Icon(
+                  shiftName == 'MAÑANA' ? Icons.wb_sunny
+                      : shiftName == 'TARDE' ? Icons.wb_twilight
+                      : shiftName == 'NOCHE' ? Icons.nightlight
+                      : Icons.schedule,
+                  color: shiftName == 'MAÑANA' ? Colors.orange
+                      : shiftName == 'TARDE' ? Colors.blue
+                      : shiftName == 'NOCHE' ? Colors.indigo
+                      : Colors.grey,
+                ),
+                title: Text(s['name'] as String? ?? 'Horario'),
+                subtitle: Text('$checkIn - $checkOut'),
+                trailing: Text(shiftLabel, style: TextStyle(fontWeight: FontWeight.bold)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.shade200),
+                ),
+                onTap: () => Navigator.of(ctx).pop(s),
+              );
+            }),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
+          ),
+        ],
+      ),
+    );
+
+    if (selected != null) {
+      await markAttendance(
+        context,
+        employeeId,
+        isTardanza: isTardanza,
+        scheduleName: selected['name'] as String?,
+        checkInTime: selected['check_in_time'] as String?,
+        shift: selected['shift'] as String?,
+      );
+    }
+  }
 
   Future<void> reportAbsence(BuildContext context, String employeeId) async {
     // 0. Check permissions & Get Location (Obligatorio ahora)
@@ -141,6 +243,7 @@ class AttendanceLogic {
     bool isTardanza = false,
     String? scheduleName,
     String? checkInTime,
+    String? shift,
   }) async {
     // Confirmación antes de registrar
     final now = DateTime.now();
@@ -323,7 +426,8 @@ class AttendanceLogic {
               lat: position.latitude,
               lng: position.longitude,
               lateReason: lateReason,
-              evidenceFile: evidenceFile, // null
+              evidenceFile: evidenceFile,
+              shift: shift,
             );
 
         if (context.mounted) {
@@ -375,6 +479,7 @@ class HomeScreen extends ConsumerWidget {
     // IMPORTANT: invalidate this provider on logout to prevent stale data
     final employeeStatusAsync = ref.watch(employeeStatusProvider(employeeId));
     final scheduleData = ref.watch(activeScheduleProvider(employeeId)).valueOrNull;
+    final allSchedules = ref.watch(activeSchedulesProvider(employeeId)).valueOrNull ?? [];
     final loadingNotifier = ref.watch(actionLoadingNotifierProvider);
 
     final positionTitle = storage.position ?? 'Empleado';
@@ -1291,15 +1396,40 @@ class HomeScreen extends ConsumerWidget {
                                             ? null
                                             : () {
                                                 if (employeeId != null) {
-                                                  AttendanceLogic(
-                                                    ref,
-                                                  ).markAttendance(
-                                                    context,
-                                                    employeeId,
-                                                    isTardanza: isTardanza,
-                                                    scheduleName: scheduleData?['name'] as String?,
-                                                    checkInTime: scheduleData?['check_in_time'] as String?,
-                                                  );
+                                                  // Filtrar solo horarios de trabajo (is_work_day: true)
+                                                  final workDaySchedules = allSchedules
+                                                      .where((s) => s['is_work_day'] == true)
+                                                      .toList();
+                                                  
+                                                  if (workDaySchedules.length > 1) {
+                                                    // Múltiples turnos disponibles - mostrar selector
+                                                    AttendanceLogic(ref).selectShiftAndMarkAttendance(
+                                                      context,
+                                                      employeeId,
+                                                      workDaySchedules,
+                                                      isTardanza: isTardanza,
+                                                    );
+                                                  } else if (workDaySchedules.length == 1) {
+                                                    // Un solo turno - marcar directo
+                                                    final schedule = workDaySchedules.first;
+                                                    AttendanceLogic(ref).markAttendance(
+                                                      context,
+                                                      employeeId,
+                                                      isTardanza: isTardanza,
+                                                      scheduleName: schedule['name'] as String?,
+                                                      checkInTime: schedule['check_in_time'] as String?,
+                                                      shift: schedule['shift'] as String?,
+                                                    );
+                                                  } else {
+                                                    // Fallback al comportamiento original (compatibilidad)
+                                                    AttendanceLogic(ref).markAttendance(
+                                                      context,
+                                                      employeeId,
+                                                      isTardanza: isTardanza,
+                                                      scheduleName: scheduleData?['name'] as String?,
+                                                      checkInTime: scheduleData?['check_in_time'] as String?,
+                                                    );
+                                                  }
                                                 }
                                               },
                                         style: ElevatedButton.styleFrom(

@@ -1,3 +1,4 @@
+import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
@@ -160,9 +161,11 @@ class RequestsRepository {
           );
 
       // 2. Obtener URL Pública
-      final publicUrl = _supabase.storage
+      final rawUrl = _supabase.storage
           .from('papeletas')
           .getPublicUrl(fileName);
+
+      final publicUrl = SupabaseConstants.fixStorageUrl(rawUrl);
 
       // 3. Actualizar la solicitud
       await _supabase
@@ -193,9 +196,11 @@ class RequestsRepository {
           .upload(fileName, file, fileOptions: const FileOptions(upsert: true));
 
       // 2. Obtener URL Pública
-      final signedUrl = _supabase.storage
+      final rawSignedUrl = _supabase.storage
           .from('papeletas')
           .getPublicUrl(fileName);
+
+      final signedUrl = SupabaseConstants.fixStorageUrl(rawSignedUrl);
 
       // 3. Actualizar la solicitud con la URL del firmado
       await _supabase

@@ -1,14 +1,14 @@
 import 'dart:io';
+import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/requests/data/requests_repository.dart';
-import 'package:app_asistencias_pauser/features/requests/utils/papeleta_html_generator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
-import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final myRequestsProvider = StreamProvider.autoDispose
     .family<List<Map<String, dynamic>>, String>((ref, employeeId) {
@@ -497,66 +497,34 @@ Future<bool> generateAndUploadPdf({
   required StorageService storage,
 }) async {
   try {
-    final employeeName = storage.fullName ?? 'DESCONOCIDO';
-    final employeeDni = storage.dni ?? '00000000';
-    final employeePosition = storage.position ?? 'SIN CARGO';
-    final employeeSede = storage.sede ?? 'TRUJILLO';
+    final response = await Supabase.instance.client.functions.invoke(
+      'generate-papeleta',
+      body: {
+        'record': {
+          'id': requestId,
+        },
+      },
+    );
 
-    final startDate = DateTime.parse(requestData['start_date'].toString());
-    final endDate = DateTime.parse(requestData['end_date'].toString());
-    final requestType = requestData['request_type'].toString();
-
-    // 0. Obtener Autoridad Firmante (Jefe Inmediato)
-    if (storage.employeeId == null) {
-      throw Exception('No se pudo identificar al empleado.');
+    if (response.status != 200) {
+      throw Exception('Error del servidor (${response.status})');
     }
 
-    final signingAuth = await ref
-        .read(requestsRepositoryProvider)
-        .getSigningAuthority(storage.employeeId!);
+    final result = response.data as Map<String, dynamic>?;
 
-    final repName = signingAuth['full_name']?.toString() ?? '';
-    final repDni = signingAuth['dni']?.toString() ?? '';
+    if (result == null) {
+      throw Exception('No se recibió respuesta de la Edge Function');
+    }
 
-    if (signingAuth['found'] != true || repName.isEmpty || repDni.isEmpty) {
+    if (result['success'] != true) {
       throw Exception(
-        'No se encontró la autoridad firmante para este empleado. '
-        'Contacte a Gestión del Talento.',
+        result['error']?.toString() ?? 'Error desconocido al generar papeleta',
       );
     }
 
-    // 1. Generar HTML
-    final htmlContent = PapeletaHtmlGenerator.generate(
-      employeeName: employeeName,
-      employeeDni: employeeDni,
-      employeePosition: employeePosition,
-      employeeSede: employeeSede,
-      requestType: requestType,
-      startDate: startDate,
-      endDate: endDate,
-      emissionDate: DateTime.now(),
-      employerRepresentante: repName,
-      employerDniRep: repDni,
-    );
-
-    // 2. Convertir a PDF (Uint8List) con timeout
-    final pdfBytes = await Printing.convertHtml(
-      html: htmlContent,
-      format: PdfPageFormat.a4,
-    ).timeout(const Duration(seconds: 15));
-
-    // 3. Subir a Supabase
-    await ref
-        .read(requestsRepositoryProvider)
-        .uploadGeneratedPdf(
-          requestId: requestId,
-          employeeDni: employeeDni,
-          pdfBytes: pdfBytes,
-        );
-
     return true;
   } catch (e) {
-    debugPrint('Error generando PDF: $e');
+    debugPrint('Error generando PDF via Edge Function: $e');
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -651,9 +619,12 @@ class _RequestsHistoryState extends ConsumerState<_RequestsHistory> {
                         final color = _getStatusColor(status);
 
                         // Variables clave para el flujo
-                        final pdfUrl = req['pdf_url']; // PDF Emitido por web
-                        final signedUrl =
-                            req['signed_file_url']; // Archivo subido
+                        final pdfUrl = (req['pdf_url'] as String?)?.isNotEmpty == true
+                            ? SupabaseConstants.fixStorageUrl(req['pdf_url'])
+                            : null;
+                        final signedUrl = (req['signed_file_url'] as String?)?.isNotEmpty == true
+                            ? SupabaseConstants.fixStorageUrl(req['signed_file_url'])
+                            : null;
                         final requestType = req['request_type'] ?? '';
                         final isGenerating = _generatingId == req['id'];
 

@@ -370,7 +370,6 @@ class AttendanceLogic {
           .getTodayAttendance(employeeId);
 
       // VALIDACIÓN DE FECHA: Asegurar que el registro sea de HOY
-      final now = DateTime.now();
       final todayStr = DateFormat('yyyy-MM-dd').format(now);
       final recordDate = lastAttendance?['work_date'] as String?;
       final isRecordFromToday = recordDate == todayStr;

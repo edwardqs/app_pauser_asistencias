@@ -140,28 +140,6 @@ Future<void> checkIn({
       throw Exception(response['message']);
     }
   }
-    }
-
-    // 2. Call RPC to register attendance
-    // We pass 'IN' as type.
-    // If lateReason is provided, we pass it as notes.
-
-    final response = await _supabase.rpc(
-      'register_attendance',
-      params: {
-        'p_employee_id': employeeId,
-        'p_lat': lat,
-        'p_lng': lng,
-        'p_type': 'IN',
-        if (lateReason != null) 'p_notes': lateReason,
-        if (evidenceUrl != null) 'p_evidence_url': evidenceUrl,
-      },
-    );
-
-    if (response is Map && response['success'] == false) {
-      throw Exception(response['message']);
-    }
-  }
 
   Future<void> reportAbsence({
     required String employeeId,
@@ -285,8 +263,8 @@ Future<void> checkIn({
             final validTo = a['valid_to'] as String?;
             if (validTo == null) return true;
             final scheduleType = (a['schedule'] as Map<String, dynamic>?)?['schedule_type'] as String? ?? 'REGULAR';
-            if (scheduleType != 'REGULAR') return true;
-            return false;
+          if (scheduleType != 'REGULAR') return true;
+          return validTo != todayStr;
           })
           .toList();
 

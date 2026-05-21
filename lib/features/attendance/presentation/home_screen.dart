@@ -506,10 +506,8 @@ class HomeScreen extends ConsumerWidget {
           final recordDate = attendance?['work_date'] as String?;
           final isRecordFromToday = recordDate == todayStr;
 
-          // Filtrar asistencia efectiva
-          // Si el repositorio devuelve null, effectiveAttendance es null.
-          // Si devuelve algo, confiamos en que es de hoy gracias al filtro del repo.
-          final effectiveAttendance = attendance;
+          // Solo considerar el registro si es de HOY
+          final effectiveAttendance = isRecordFromToday ? attendance : null;
 
           // Detectar si el registro fue rechazado por el supervisor
           final isRejected =

@@ -562,7 +562,6 @@ class HomeScreen extends ConsumerWidget {
               int.tryParse(checkOutParts[1]) ?? 0);
 
           final isTardanza = now.isAfter(tardanzaLimit);
-          final isPastAbsenceLimit = now.isAfter(absenceLimit);
 
           // Lógica de Falta Injustificada
           // 1. Si ya viene del backend con ese estado
@@ -572,33 +571,7 @@ class HomeScreen extends ConsumerWidget {
                   effectiveAttendance['absence_reason'] ==
                       'FALTA INJUSTIFICADA');
 
-          // 2. Si no hay registro, ya pasó la hora límite, Y es día laborable, Y no tiene solicitud activa
-          // scheduleData != null garantiza que el horario ya cargó antes de evaluar
-          final shouldRegisterFalta =
-              effectiveAttendance == null &&
-              isPastAbsenceLimit &&
-              scheduleData != null &&
-              isWorkDay &&
-              !isOnVacation;
-          final isFaltaInjustificada = isMarkedFalta || shouldRegisterFalta;
-
-          // AUTO-REGISTRO DE FALTA:
-          // Si detectamos que debería ser falta pero no está en BD (effectiveAttendance == null),
-          // disparamos el registro silencioso para que la Web lo vea.
-          if (shouldRegisterFalta) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              // Usamos un provider/flag o simplemente llamamos al repo.
-              // Para evitar spam, el repositorio maneja 'duplicate key' exception.
-              // Además, al invalidar el provider, la UI se actualizará y esta condición será falsa.
-              ref
-                  .read(attendanceRepositoryProvider)
-                  .registerUnjustifiedAbsence(employeeId!)
-                  .then((_) {
-                    // Refrescar para traer el nuevo registro de la BD
-                    ref.invalidate(employeeStatusProvider(employeeId));
-                  });
-            });
-          }
+          final isFaltaInjustificada = isMarkedFalta;
 
           // Clave única del estado para AnimatedSwitcher (fade de 300ms)
           final stateKey = isOnVacation ? 'vacation'

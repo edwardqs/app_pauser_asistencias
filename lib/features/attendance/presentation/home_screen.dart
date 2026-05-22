@@ -547,12 +547,13 @@ class HomeScreen extends ConsumerWidget {
           final String nextWorkDay =
               scheduleData?['next_work_day'] as String? ?? '';
 
-          // Hora límite para TARDANZA: usa horario asignado o default 07:00
+          // Hora límite para TARDANZA: usa horario asignado o default 07:00 + tolerancia
           final checkInParts = (scheduleData?['check_in_time'] as String? ?? '07:00:00').split(':');
+          final toleranceMins = (scheduleData?['tolerance_minutes'] as num?)?.toInt() ?? 0;
           final tardanzaLimit = DateTime(now.year, now.month, now.day,
               int.tryParse(checkInParts[0]) ?? 7,
-              int.tryParse(checkInParts[1]) ?? 0);
-
+              int.tryParse(checkInParts[1]) ?? 0).add(Duration(minutes: toleranceMins));
+          
           // Hora límite para CIERRE/INASISTENCIA: basada en check_out del horario o 18:00 por defecto
           final checkOutParts = (scheduleData?['check_out_time'] as String? ?? '18:00:00').split(':');
           final absenceLimit = DateTime(now.year, now.month, now.day,

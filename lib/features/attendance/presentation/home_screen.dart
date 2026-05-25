@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'package:analog_clock/analog_clock.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
@@ -43,6 +43,14 @@ final activeSchedulesProvider = FutureProvider.family
       if (employeeId == null) return [];
       return ref.read(attendanceRepositoryProvider).getActiveSchedules(employeeId);
     });
+
+// Provider para obtener TODAS las asistencias de HOY (multi-turno)
+final todayAllAttendancesProvider = FutureProvider.family
+    .autoDispose<List<Map<String, dynamic>>, String?>((ref, employeeId) async {
+      if (employeeId == null) return [];
+      return ref.read(attendanceRepositoryProvider).getTodayAllAttendances(employeeId);
+    });
+
 
 // 2. Provider para el estado de carga de la acción (WRITE State)
 final actionLoadingNotifierProvider = Provider.autoDispose<ValueNotifier<bool>>(
@@ -225,6 +233,7 @@ class AttendanceLogic {
         }
         // Refrescar estado
         ref.invalidate(employeeStatusProvider(employeeId));
+        ref.invalidate(todayAllAttendancesProvider(employeeId));
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -441,6 +450,7 @@ class AttendanceLogic {
 
       // Refresh provider
       ref.invalidate(employeeStatusProvider(employeeId));
+      ref.invalidate(todayAllAttendancesProvider(employeeId));
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -479,6 +489,7 @@ class HomeScreen extends ConsumerWidget {
     final employeeStatusAsync = ref.watch(employeeStatusProvider(employeeId));
     final scheduleData = ref.watch(activeScheduleProvider(employeeId)).valueOrNull;
     final allSchedules = ref.watch(activeSchedulesProvider(employeeId)).valueOrNull ?? [];
+    final todayAllAttendances = ref.watch(todayAllAttendancesProvider(employeeId)).valueOrNull ?? [];
     final loadingNotifier = ref.watch(actionLoadingNotifierProvider);
 
     final positionTitle = storage.position ?? 'Empleado';
@@ -572,11 +583,21 @@ class HomeScreen extends ConsumerWidget {
 
           final isFaltaInjustificada = isMarkedFalta;
 
-          // Clave única del estado para AnimatedSwitcher (fade de 300ms)
+          // === MULTI-TURNO: calcular turnos pendientes de marcar ===
+          final workDaySchedules = allSchedules.where((s) => s['is_work_day'] == true).toList();
+          final markedShifts = todayAllAttendances.map((a) => a['shift'] as String?).toSet();
+          final pendingShifts = workDaySchedules
+              .where((s) => !markedShifts.contains(s['shift'] as String?))
+              .toList();
+          final hasPendingShifts = workDaySchedules.length > 1 && pendingShifts.isNotEmpty;
+
+          // Clave unica del estado para AnimatedSwitcher (fade de 300ms)
           final stateKey = isOnVacation ? 'vacation'
               : !canMarkAttendance ? 'restricted'
               : !isWorkDay ? 'nonworkday'
               : isRejected ? 'rejected'
+              // Multi-turno: si quedan turnos pendientes, volver a mostrar el boton de marcar
+              : hasPendingShifts ? 'checkin'
               : (isFaltaInjustificada || isDayComplete || isCheckedIn) ? 'completed'
               : 'checkin';
 
@@ -605,6 +626,7 @@ class HomeScreen extends ConsumerWidget {
                     if (employeeId != null) {
                       // Invalidar provider para recargar datos
                       ref.invalidate(employeeStatusProvider(employeeId));
+                      ref.invalidate(todayAllAttendancesProvider(employeeId));
                       // Esperar a que se complete la recarga para detener el indicador
                       try {
                         await ref.read(
@@ -1367,22 +1389,19 @@ class HomeScreen extends ConsumerWidget {
                                             ? null
                                             : () {
                                                 if (employeeId != null) {
-                                                  // Filtrar solo horarios de trabajo (is_work_day: true)
-                                                  final workDaySchedules = allSchedules
-                                                      .where((s) => s['is_work_day'] == true)
-                                                      .toList();
-                                                  
-                                                  if (workDaySchedules.length > 1) {
-                                                    // Múltiples turnos disponibles - mostrar selector
+                                                  // Usar pendingShifts (turnos aun no marcados hoy)
+                                                  // Para empleados de un solo turno, pendingShifts == workDaySchedules
+                                                  if (pendingShifts.length > 1) {
+                                                    // Multiples turnos pendientes - mostrar selector
                                                     AttendanceLogic(ref).selectShiftAndMarkAttendance(
                                                       context,
                                                       employeeId,
-                                                      workDaySchedules,
+                                                      pendingShifts,
                                                       isTardanza: isTardanza,
                                                     );
-                                                  } else if (workDaySchedules.length == 1) {
-                                                    // Un solo turno - marcar directo
-                                                    final schedule = workDaySchedules.first;
+                                                  } else if (pendingShifts.length == 1) {
+                                                    // Un solo turno pendiente - marcar directo
+                                                    final schedule = pendingShifts.first;
                                                     AttendanceLogic(ref).markAttendance(
                                                       context,
                                                       employeeId,
@@ -1392,18 +1411,19 @@ class HomeScreen extends ConsumerWidget {
                                                       shift: schedule['shift'] as String?,
                                                     );
                                                   } else {
-                                                    // Fallback al comportamiento original (compatibilidad)
+                                                    // Fallback: sin turnos calculados, usar scheduleData
                                                     AttendanceLogic(ref).markAttendance(
                                                       context,
                                                       employeeId,
                                                       isTardanza: isTardanza,
                                                       scheduleName: scheduleData?['name'] as String?,
                                                       checkInTime: scheduleData?['check_in_time'] as String?,
+                                                      shift: scheduleData?['shift'] as String?,
                                                     );
                                                   }
                                                 }
                                               },
-                                        style: ElevatedButton.styleFrom(
+                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: isTardanza
                                               ? const Color(0xFFEA580C)
                                               : const Color(0xFF2563EB),

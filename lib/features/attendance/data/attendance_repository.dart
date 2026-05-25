@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -78,6 +78,27 @@ class AttendanceRepository {
     return null;
   }
 
+
+  /// Devuelve TODOS los registros de asistencia de hoy para el empleado.
+  /// Necesario para empleados con multiples turnos (MANANA + TARDE + NOCHE).
+  /// Cada registro tiene un [shift] distinto — asi sabemos cuales quedan pendientes.
+  Future<List<Map<String, dynamic>>> getTodayAllAttendances(String employeeId) async {
+    final now = DateTime.now();
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    try {
+      final response = await _supabase
+          .from('attendance')
+          .select('id, work_date, check_in, check_out, shift, status, record_type, is_late, notes, validated')
+          .eq('employee_id', employeeId)
+          .eq('work_date', todayStr)
+          .order('check_in', ascending: true);
+      return List<Map<String, dynamic>>.from(response as List);
+    } catch (e) {
+      if (kDebugMode) print('Error en getTodayAllAttendances: $e');
+      return [];
+    }
+  }
   Future<List<Map<String, dynamic>>> getAttendanceHistory(
     String employeeId, {
     int page = 0,
@@ -324,3 +345,4 @@ Future<void> checkIn({
     );
   }
 }
+

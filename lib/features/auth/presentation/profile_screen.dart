@@ -1,11 +1,10 @@
-import 'dart:io';
-
-import 'package:app_asistencias_pauser/core/services/auth_notifier.dart'; // Import AuthNotifier
+import 'package:app_asistencias_pauser/core/platform/file_helper.dart';
+import 'package:app_asistencias_pauser/core/services/auth_notifier.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
+import 'package:app_asistencias_pauser/core/services/update_service.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/profile_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -13,23 +12,14 @@ class ProfileScreen extends ConsumerWidget {
   Future<void> _pickAndUploadImage(
     BuildContext context,
     WidgetRef ref,
-    ImageSource source,
   ) async {
-    final picker = ImagePicker();
     try {
-      final pickedFile = await picker.pickImage(
-        source: source,
-        maxWidth: 800, // Optimize resolution
-        maxHeight: 800,
-        imageQuality: 85, // Compress quality
+      final crossFile = await CrossFile.pick(
+        type: FileType.image,
       );
 
-      if (pickedFile != null) {
-        final file = File(pickedFile.path);
-
-        // Validate size (10MB limit)
-        final sizeInBytes = await file.length();
-        if (sizeInBytes > 10 * 1024 * 1024) {
+      if (crossFile != null) {
+        if (crossFile.bytes.length > 10 * 1024 * 1024) {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -40,10 +30,9 @@ class ProfileScreen extends ConsumerWidget {
           return;
         }
 
-        // Upload
         final success = await ref
             .read(profileControllerProvider.notifier)
-            .updateProfilePicture(file);
+            .updateProfilePicture(crossFile.bytes, crossFile.extension);
 
         if (context.mounted) {
           if (success) {
@@ -53,7 +42,6 @@ class ProfileScreen extends ConsumerWidget {
               ),
             );
           } else {
-            // Error handled in controller state, but we can show generic msg
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Error al subir la imagen')),
             );
@@ -70,31 +58,7 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   void _showPickerOptions(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Galería'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _pickAndUploadImage(context, ref, ImageSource.gallery);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Cámara'),
-              onTap: () {
-                Navigator.of(ctx).pop();
-                _pickAndUploadImage(context, ref, ImageSource.camera);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    _pickAndUploadImage(context, ref);
   }
 
   @override
@@ -292,6 +256,56 @@ class ProfileScreen extends ConsumerWidget {
                           icon: Icons.store,
                           title: 'Unidad de Negocio',
                           value: storage.businessUnit ?? 'General',
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final update = await UpdateService.checkForUpdate();
+                              if (!context.mounted) return;
+                              if (update == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Error al verificar actualización')),
+                                );
+                                return;
+                              }
+                              final currentBuild = await UpdateService.getCurrentBuildNumber();
+                              if (update.buildNumber <= currentBuild) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Ya tienes la última versión (${update.version})'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                                return;
+                              }
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Nueva versión'),
+                                  content: Text('Versión ${update.version} disponible\n\n${update.releaseNotes}'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(ctx).pop(false),
+                                      child: const Text('Más tarde'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.of(ctx).pop(true),
+                                      child: const Text('Actualizar'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed == true) {
+                                UpdateService.downloadAndInstall(update);
+                              }
+                            },
+                            icon: const Icon(Icons.system_update),
+                            label: const Text('Verificar actualización'),
+                          ),
                         ),
 
                         const SizedBox(height: 48),

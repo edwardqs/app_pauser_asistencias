@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,17 +34,15 @@ class StorageService {
 
   /// Uploads an evidence file to the 'attendance_evidence' bucket.
   /// Returns the public URL of the uploaded file.
-  Future<String> uploadEvidence(File file) async {
+  Future<String> uploadEvidence(Uint8List bytes, String fileName) async {
     try {
-      final fileName =
-          'evidence_${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
       final path = 'manual_uploads/$fileName';
 
       await _supabase.storage
           .from('attendance_evidence')
-          .upload(
+          .uploadBinary(
             path,
-            file,
+            bytes,
             fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
           );
 

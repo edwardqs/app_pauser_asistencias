@@ -1,15 +1,14 @@
 ﻿import 'dart:async';
-import 'dart:io';
 import 'package:analog_clock/analog_clock.dart';
+import 'package:app_asistencias_pauser/core/platform/file_helper.dart';
+import 'package:app_asistencias_pauser/core/platform/location_helper.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/attendance/data/attendance_repository.dart';
 import 'package:app_asistencias_pauser/features/requests/data/requests_repository.dart';
 import 'package:app_asistencias_pauser/features/requests/presentation/notifications_screen.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
 // Provider for unread count
@@ -164,64 +163,100 @@ class AttendanceLogic {
   }
 
   Future<void> reportAbsence(BuildContext context, String employeeId) async {
-    // 0. Check permissions & Get Location (Obligatorio ahora)
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Permisos de ubicación denegados')),
-          );
-        }
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Permisos de ubicación denegados permanentemente'),
-          ),
-        );
-      }
-      return;
-    }
-
     // 1. Mostrar diálogo de justificación con tipos dinámicos
-    // Pasamos la referencia al repositorio para cargar motivos
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => JustificationDialog(
         title: 'Reportar Novedad / Inasistencia',
         message: 'Seleccione el motivo y describa los detalles.',
-        repositoryRef: ref.read(attendanceRepositoryProvider), // Pasar repo
+        repositoryRef: ref.read(attendanceRepositoryProvider),
       ),
     );
 
-    if (result == null) return; // Cancelado
+    if (result == null) return;
 
     final reason = result['reason'];
     final recordType = result['recordType'];
-    final evidenceFile = result['file'];
+    final evidenceFile = result['file'] as CrossFile?;
 
-    // 2. Proceder a reportar
+    // 2. Obtener ubicación
+    final position = await LocationService().getCurrentPosition();
+
+    // Verificar proximidad GPS a la sede
+    final proximity = await ref
+        .read(attendanceRepositoryProvider)
+        .checkGpsProximity(
+          employeeId,
+          position?.latitude ?? 0,
+          position?.longitude ?? 0,
+        );
+
+    final isFar = proximity['is_within_range'] == false;
+    final distanceMeters = (proximity['distance_meters'] as num?)?.round() ?? 0;
+
+    if (isFar && context.mounted) {
+      final continueAnyway = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Icon(Icons.location_off, color: Colors.orange.shade700),
+              const SizedBox(width: 8),
+              const Text('Fuera de rango', style: TextStyle(fontSize: 18)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Estás a $distanceMeters metros de la sede.',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Se notificará a tu supervisor que reportaste fuera de la oficina.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              const Text('¿Deseas continuar?', style: TextStyle(fontSize: 14)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Continuar'),
+            ),
+          ],
+        ),
+      );
+      if (continueAnyway != true) return;
+    }
+
+    // 3. Proceder a reportar
     if (context.mounted) {
       ref.read(actionLoadingNotifierProvider).value = true;
       try {
-        // Obtener ubicación actual
-        final position = await Geolocator.getCurrentPosition();
-
         await ref
             .read(attendanceRepositoryProvider)
             .reportAbsence(
               employeeId: employeeId,
               reason: reason,
               recordType: recordType,
-              evidenceFile: evidenceFile,
-              lat: position.latitude,
-              lng: position.longitude,
+              evidenceBytes: evidenceFile?.bytes,
+              evidenceFileName: evidenceFile?.name,
+              lat: position?.latitude ?? 0,
+              lng: position?.longitude ?? 0,
             );
 
         if (context.mounted) {
@@ -231,7 +266,6 @@ class AttendanceLogic {
             ),
           );
         }
-        // Refrescar estado
         ref.invalidate(employeeStatusProvider(employeeId));
         ref.invalidate(todayAllAttendancesProvider(employeeId));
       } catch (e) {
@@ -341,78 +375,92 @@ class AttendanceLogic {
 
     if (confirmed != true) return;
 
-    // Check location permissions
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Permisos de ubicación denegados')),
-          );
-        }
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Permisos de ubicación denegados permanentemente'),
-          ),
-        );
-      }
-      return;
-    }
-
-    // Set loading
     ref.read(actionLoadingNotifierProvider).value = true;
 
     try {
-      // Get location
-      final position = await Geolocator.getCurrentPosition();
+      final position = await LocationService().getCurrentPosition();
 
-      // Refresh data local to be sure logic is correct
-      final lastAttendance = await ref
+      // Verificar proximidad GPS a la sede
+      final proximity = await ref
           .read(attendanceRepositoryProvider)
-          .getTodayAttendance(employeeId);
+          .checkGpsProximity(
+            employeeId,
+            position?.latitude ?? 0,
+            position?.longitude ?? 0,
+          );
 
-      // VALIDACIÓN DE FECHA: Asegurar que el registro sea de HOY
-      final todayStr = DateFormat('yyyy-MM-dd').format(now);
-      final recordDate = lastAttendance?['work_date'] as String?;
-      final isRecordFromToday = recordDate == todayStr;
+      final isFar = proximity['is_within_range'] == false;
+      final distanceMeters = (proximity['distance_meters'] as num?)?.round() ?? 0;
 
-      // Solo consideramos check-in activo si es de hoy y no tiene salida
-      final isCheckedIn =
-          isRecordFromToday &&
-          lastAttendance != null &&
-          lastAttendance['check_out'] == null;
+      if (isFar && context.mounted) {
+        final continueAnyway = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Icon(Icons.location_off, color: Colors.orange.shade700),
+                const SizedBox(width: 8),
+                const Text('Fuera de rango', style: TextStyle(fontSize: 18)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Estás a $distanceMeters metros de la sede.',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Se notificará a tu supervisor que marcaste asistencia lejos de la oficina.',
+                  style: TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                const Text('¿Deseas continuar?', style: TextStyle(fontSize: 14)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('Continuar'),
+              ),
+            ],
+          ),
+        );
+        if (continueAnyway != true) {
+          ref.read(actionLoadingNotifierProvider).value = false;
+          return;
+        }
+      }
 
-      if (isCheckedIn) {
-        // YA NO HACEMOS CHECK OUT.
-        // Si el usuario ya marcó entrada hoy, simplemente le informamos.
-        // Opcionalmente podríamos permitir actualizar la "salida" si fuera necesario,
-        // pero según requerimiento: "solo se debe de registrar el ingreso".
+      // Para multi-turno: verificar si ya hay registro para ESTE turno específico
+      final allTodayAttendances = await ref
+          .read(attendanceRepositoryProvider)
+          .getTodayAllAttendances(employeeId);
+      final alreadyCheckedInThisShift = allTodayAttendances
+          .any((a) => a['shift'] == shift && a['check_out'] == null);
 
+      if (alreadyCheckedInThisShift) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Ya has registrado tu asistencia hoy'),
+              content: Text('Ya has registrado tu asistencia para este turno'),
             ),
           );
         }
         return;
       } else {
-        // Validación extra: Si ya existe un registro HOY que no sea CheckIn activo
-        // (ej. ya completó el día), attendanceRepository.checkIn podría fallar o crear duplicado si no hay unique constraint.
-        // Pero aquí confiamos en que isCheckedIn es false.
-
-        // Check In logic (UPDATED - Simplified Flow)
-        // Ya no solicitamos motivo ni evidencia para tardanzas o inasistencias.
-        // El sistema captura automáticamente la hora y ubicación.
-
-        // Para tardanza: nota con la hora real del horario asignado (no hardcoded 7:00)
         String? lateReason;
         if (isTardanza && checkInTime != null) {
           final timePart = checkInTime.length >= 5 ? checkInTime.substring(0, 5) : checkInTime;
@@ -420,9 +468,7 @@ class AttendanceLogic {
         } else if (isTardanza) {
           lateReason = 'Ingreso con tardanza';
         }
-        File? evidenceFile;
 
-        // Procedemos directamente al check-in
         if (context.mounted) {
           ref.read(actionLoadingNotifierProvider).value = true;
         }
@@ -431,10 +477,9 @@ class AttendanceLogic {
             .read(attendanceRepositoryProvider)
             .checkIn(
               employeeId: employeeId,
-              lat: position.latitude,
-              lng: position.longitude,
+              lat: position?.latitude ?? 0,
+              lng: position?.longitude ?? 0,
               lateReason: lateReason,
-              evidenceFile: evidenceFile,
               shift: shift,
             );
 
@@ -448,7 +493,6 @@ class AttendanceLogic {
         }
       }
 
-      // Refresh provider
       ref.invalidate(employeeStatusProvider(employeeId));
       ref.invalidate(todayAllAttendancesProvider(employeeId));
     } catch (e) {
@@ -458,7 +502,6 @@ class AttendanceLogic {
         );
       }
     } finally {
-      // Stop loading
       ref.read(actionLoadingNotifierProvider).value = false;
     }
   }
@@ -587,7 +630,15 @@ class HomeScreen extends ConsumerWidget {
           final workDaySchedules = allSchedules.where((s) => s['is_work_day'] == true).toList();
           final markedShifts = todayAllAttendances.map((a) => a['shift'] as String?).toSet();
           final pendingShifts = workDaySchedules
-              .where((s) => !markedShifts.contains(s['shift'] as String?))
+              .where((s) {
+                if (markedShifts.contains(s['shift'] as String?)) return false;
+                final checkOutStr = s['check_out_time'] as String? ?? '18:00:00';
+                final parts = checkOutStr.split(':');
+                final shiftEnd = DateTime(now.year, now.month, now.day,
+                    int.tryParse(parts[0]) ?? 18,
+                    int.tryParse(parts[1]) ?? 0);
+                return now.isBefore(shiftEnd);
+              })
               .toList();
           final hasPendingShifts = workDaySchedules.length > 1 && pendingShifts.isNotEmpty;
 
@@ -1592,7 +1643,7 @@ class JustificationDialog extends StatefulWidget {
 
 class _JustificationDialogState extends State<JustificationDialog> {
   final _reasonController = TextEditingController();
-  File? _evidenceFile;
+  CrossFile? _evidenceFile;
 
   // Logic for dynamic reasons
   List<Map<String, dynamic>> _absenceReasons = [];
@@ -1639,10 +1690,10 @@ class _JustificationDialogState extends State<JustificationDialog> {
   }
 
   Future<void> _pickFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    final result = await CrossFile.pick();
     if (result != null) {
       setState(() {
-        _evidenceFile = File(result.files.single.path!);
+        _evidenceFile = result;
       });
     }
   }
@@ -1729,7 +1780,7 @@ class _JustificationDialogState extends State<JustificationDialog> {
                     Expanded(
                       child: Text(
                         _evidenceFile != null
-                            ? _evidenceFile!.path.split('/').last
+                            ? _evidenceFile!.name
                             : 'Toca para adjuntar archivo',
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

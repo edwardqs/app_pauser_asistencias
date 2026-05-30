@@ -1,7 +1,6 @@
 import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:io';
 import 'dart:typed_data';
 
 final requestsRepositoryProvider = Provider<RequestsRepository>((ref) {
@@ -45,7 +44,8 @@ class RequestsRepository {
     required DateTime startDate,
     required DateTime endDate,
     required String reason,
-    File? evidenceFile,
+    Uint8List? evidenceBytes,
+    String? evidenceFileName,
   }) async {
     try {
       // 0. Validar superposición solo para vacaciones
@@ -71,13 +71,13 @@ class RequestsRepository {
       String? evidenceUrl;
 
       // 1. Subir evidencia inicial si existe (ej. certificado médico)
-      if (evidenceFile != null) {
-        final fileExt = evidenceFile.path.split('.').last;
+      if (evidenceBytes != null && evidenceFileName != null) {
         final fileName =
-            'requests/$employeeId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+            'requests/$employeeId/${DateTime.now().millisecondsSinceEpoch}_$evidenceFileName';
 
-        // Usamos bucket 'evidence' o el que tengas configurado
-        await _supabase.storage.from('evidence').upload(fileName, evidenceFile);
+        await _supabase.storage
+            .from('evidence')
+            .uploadBinary(fileName, evidenceBytes);
         evidenceUrl = _supabase.storage.from('evidence').getPublicUrl(fileName);
       }
 
@@ -183,17 +183,15 @@ class RequestsRepository {
   Future<void> uploadSignedDocument({
     required String requestId,
     required String employeeId,
-    required File file,
+    required Uint8List fileBytes,
+    required String fileExtension,
   }) async {
     try {
-      final fileExt = file.path.split('.').last;
-      // Guardamos en carpeta 'signed' dentro del bucket 'papeletas'
-      final fileName = 'signed/${employeeId}_${requestId}_firmado.$fileExt';
+      final fileName = 'signed/${employeeId}_${requestId}_firmado.$fileExtension';
 
-      // 1. Subir archivo (con upsert true para reemplazar si se equivocó)
       await _supabase.storage
           .from('papeletas')
-          .upload(fileName, file, fileOptions: const FileOptions(upsert: true));
+          .uploadBinary(fileName, fileBytes, fileOptions: const FileOptions(upsert: true));
 
       // 2. Obtener URL Pública
       final rawSignedUrl = _supabase.storage

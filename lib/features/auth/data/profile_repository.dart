@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -11,26 +11,27 @@ class ProfileRepository {
 
   ProfileRepository(this._supabase);
 
-  Future<String> uploadProfilePicture(String employeeId, File imageFile) async {
-    final fileExt = imageFile.path.split('.').last;
-    final fileName = '$employeeId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-    
-    // Upload image to 'avatars' bucket (as defined in SUPABASE_PROFILE_PICTURE.sql)
-    await _supabase.storage.from('avatars').upload(
+  Future<String> uploadProfilePicture(
+    String employeeId,
+    Uint8List imageBytes,
+    String extension,
+  ) async {
+    final fileName =
+        '$employeeId/${DateTime.now().millisecondsSinceEpoch}.$extension';
+
+    await _supabase.storage.from('avatars').uploadBinary(
           fileName,
-          imageFile,
+          imageBytes,
           fileOptions: const FileOptions(upsert: true),
         );
 
     final imageUrl = _supabase.storage.from('avatars').getPublicUrl(fileName);
-    
-    // Update user profile in database using RPC
-    // RPC name matches SUPABASE_UPDATE_PROFILE_RPC.sql
+
     await _supabase.rpc('update_employee_profile_picture', params: {
       'p_employee_id': employeeId,
       'p_image_url': imageUrl,
     });
-    
+
     return imageUrl;
   }
 }

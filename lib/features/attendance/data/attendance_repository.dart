@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+﻿import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -118,24 +118,42 @@ class AttendanceRepository {
     return List<Map<String, dynamic>>.from(response as List);
   }
 
-Future<void> checkIn({
+  Future<Map<String, dynamic>> checkGpsProximity(
+    String employeeId,
+    double lat,
+    double lng,
+  ) async {
+    final response = await _supabase.rpc(
+      'check_gps_proximity',
+      params: {
+        'p_employee_id': employeeId,
+        'p_lat': lat,
+        'p_lng': lng,
+      },
+    );
+    return Map<String, dynamic>.from(response as Map);
+  }
+
+  Future<void> checkIn({
     required String employeeId,
     required double lat,
     required double lng,
     String? lateReason,
-    File? evidenceFile,
+    Uint8List? evidenceBytes,
+    String? evidenceFileName,
     String? shift,
   }) async {
     String? evidenceUrl;
 
     // 1. Upload evidence if exists
-    if (evidenceFile != null) {
+    if (evidenceBytes != null && evidenceFileName != null) {
       try {
-        final fileExt = evidenceFile.path.split('.').last;
         final fileName =
-            'evidence/$employeeId/checkin_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+            'evidence/$employeeId/checkin_${DateTime.now().millisecondsSinceEpoch}_$evidenceFileName';
 
-        await _supabase.storage.from('evidence').upload(fileName, evidenceFile);
+        await _supabase.storage
+            .from('evidence')
+            .uploadBinary(fileName, evidenceBytes);
 
         evidenceUrl = _supabase.storage.from('evidence').getPublicUrl(fileName);
       } catch (e) {
@@ -168,20 +186,20 @@ Future<void> checkIn({
     required String recordType,
     required double lat,
     required double lng,
-    File? evidenceFile,
+    Uint8List? evidenceBytes,
+    String? evidenceFileName,
   }) async {
     String? evidenceUrl;
 
     // 1. Upload evidence if exists
-    if (evidenceFile != null) {
+    if (evidenceBytes != null && evidenceFileName != null) {
       try {
-        final fileExt = evidenceFile.path.split('.').last;
         final fileName =
-            'evidence/$employeeId/absence_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+            'evidence/$employeeId/absence_${DateTime.now().millisecondsSinceEpoch}_$evidenceFileName';
 
         await _supabase.storage
             .from('attendance_evidence')
-            .upload(fileName, evidenceFile);
+            .uploadBinary(fileName, evidenceBytes);
 
         evidenceUrl = _supabase.storage
             .from('attendance_evidence')
@@ -189,12 +207,11 @@ Future<void> checkIn({
       } catch (e) {
         // Fallback to 'evidence' bucket
         try {
-          final fileExt = evidenceFile.path.split('.').last;
           final fileName =
-              'evidence/$employeeId/${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+              'evidence/$employeeId/${DateTime.now().millisecondsSinceEpoch}_$evidenceFileName';
           await _supabase.storage
               .from('evidence')
-              .upload(fileName, evidenceFile);
+              .uploadBinary(fileName, evidenceBytes);
           evidenceUrl = _supabase.storage
               .from('evidence')
               .getPublicUrl(fileName);

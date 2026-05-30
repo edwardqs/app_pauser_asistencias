@@ -1,8 +1,7 @@
-import 'dart:io';
 import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
+import 'package:app_asistencias_pauser/core/platform/file_helper.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/requests/data/requests_repository.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -150,8 +149,7 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
   DateTime? _startDate;
   DateTime? _endDate;
   final _reasonController = TextEditingController();
-  File? _evidenceFile;
-  String? _evidenceFileName;
+  CrossFile? _evidenceFile;
   bool _isLoading = false;
 
   final List<String> _requestTypes = [
@@ -168,15 +166,13 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
   }
 
   Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
+    final result = await CrossFile.pick(
       allowedExtensions: ['jpg', 'pdf', 'png', 'jpeg'],
     );
 
     if (result != null) {
       setState(() {
-        _evidenceFile = File(result.files.single.path!);
-        _evidenceFileName = result.files.single.name;
+        _evidenceFile = result;
       });
     }
   }
@@ -234,7 +230,8 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
             startDate: _startDate!,
             endDate: _endDate!,
             reason: _reasonController.text,
-            evidenceFile: _evidenceFile,
+            evidenceBytes: _evidenceFile?.bytes,
+            evidenceFileName: _evidenceFile?.name,
           );
 
       if (mounted) {
@@ -258,7 +255,6 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
           _endDate = null;
           _reasonController.clear();
           _evidenceFile = null;
-          _evidenceFileName = null;
           _selectedType = null;
         });
 
@@ -433,17 +429,17 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
                   color: _evidenceFile == null ? Colors.grey : Colors.green,
                 ),
                 label: Text(
-                  _evidenceFileName ?? 'Adjuntar Evidencia (Médica/Otros)',
+                  _evidenceFile?.name ?? 'Adjuntar Evidencia (Médica/Otros)',
                   style: TextStyle(
                     color: _evidenceFile == null ? Colors.grey : Colors.green,
                   ),
                 ),
               ),
-              if (_evidenceFileName != null)
+              if (_evidenceFile != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4, left: 12),
                   child: Text(
-                    'Archivo seleccionado: $_evidenceFileName',
+                    'Archivo seleccionado: ${_evidenceFile!.name}',
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ),
@@ -953,7 +949,7 @@ class _RequestsHistoryState extends ConsumerState<_RequestsHistory> {
     String requestId,
     String employeeId,
   ) async {
-    File? selectedFile;
+    CrossFile? selectedFile;
 
     await showModalBottomSheet(
       context: context,
@@ -986,13 +982,12 @@ class _RequestsHistoryState extends ConsumerState<_RequestsHistory> {
                 const SizedBox(height: 20),
                 GestureDetector(
                   onTap: () async {
-                    final result = await FilePicker.platform.pickFiles(
-                      type: FileType.custom,
+                    final result = await CrossFile.pick(
                       allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
                     );
                     if (result != null) {
                       setModalState(() {
-                        selectedFile = File(result.files.single.path!);
+                        selectedFile = result;
                       });
                     }
                   },
@@ -1034,7 +1029,7 @@ class _RequestsHistoryState extends ConsumerState<_RequestsHistory> {
                                   horizontal: 8.0,
                                 ),
                                 child: Text(
-                                  selectedFile!.path.split('/').last,
+                                  selectedFile!.name,
                                   textAlign: TextAlign.center,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -1055,9 +1050,8 @@ class _RequestsHistoryState extends ConsumerState<_RequestsHistory> {
                     onPressed: selectedFile == null
                         ? null
                         : () async {
-                            // Guardamos una referencia al ScaffoldMessenger antes de cerrar el modal
                             final messenger = ScaffoldMessenger.of(context);
-                            Navigator.pop(context); // Cerrar modal
+                            Navigator.pop(context);
 
                             try {
                               messenger.showSnackBar(
@@ -1071,7 +1065,8 @@ class _RequestsHistoryState extends ConsumerState<_RequestsHistory> {
                                   .uploadSignedDocument(
                                     requestId: requestId,
                                     employeeId: employeeId,
-                                    file: selectedFile!,
+                                    fileBytes: selectedFile!.bytes,
+                                    fileExtension: selectedFile!.extension,
                                   );
 
                               messenger.showSnackBar(

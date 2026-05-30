@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:app_asistencias_pauser/core/services/auth_notifier.dart';
+import 'package:app_asistencias_pauser/core/services/update_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +22,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   // Puntos de carga que pulsan en loop
   late AnimationController _dotsController;
   late Animation<double> _dotsAnim;
+  Timer? _splashTimer;
 
   @override
   void initState() {
@@ -39,18 +42,81 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     _dotsAnim = CurvedAnimation(parent: _dotsController, curve: Curves.easeInOut);
 
-    Future.delayed(const Duration(milliseconds: 3200), () {
-      if (!mounted) return;
-      final isAuth = ref.read(authNotifierProvider).isAuthenticated;
-      context.go(isAuth ? '/home' : '/login');
-    });
+    _splashTimer = Timer(const Duration(milliseconds: 3200), _navigateAfterSplash);
+    _checkForUpdate();
+  }
+
+  void _navigateAfterSplash() {
+    if (!mounted) return;
+    final isAuth = ref.read(authNotifierProvider).isAuthenticated;
+    context.go(isAuth ? '/home' : '/login');
   }
 
   @override
   void dispose() {
+    _splashTimer?.cancel();
     _ringController.dispose();
     _dotsController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkForUpdate() async {
+    final update = await UpdateService.checkForUpdate();
+    if (!mounted || update == null) return;
+    final currentBuild = await UpdateService.getCurrentBuildNumber();
+    if (update.buildNumber <= currentBuild) return;
+    if (!mounted) return;
+
+    _splashTimer?.cancel();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: !update.forceUpdate,
+      builder: (ctx) => PopScope(
+        canPop: !update.forceUpdate,
+        child: AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.system_update, color: Color(0xFF2563EB)),
+              const SizedBox(width: 8),
+              const Text('Nueva versión'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Versión ${update.version} disponible',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              if (update.releaseNotes.isNotEmpty)
+                Text(update.releaseNotes, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+            ],
+          ),
+          actions: [
+            if (!update.forceUpdate)
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: Text('Más tarde', style: TextStyle(color: Colors.grey[600])),
+              ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Actualizar'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (mounted) _navigateAfterSplash();
+
+    if (confirmed == true) {
+      UpdateService.downloadAndInstall(update);
+    }
   }
 
   Widget _buildRing(double baseSize, double offset, double maxOpacity) {

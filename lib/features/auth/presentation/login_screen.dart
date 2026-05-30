@@ -1,3 +1,4 @@
+import 'package:app_asistencias_pauser/core/services/update_service.dart';
 import 'package:app_asistencias_pauser/features/auth/presentation/auth_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,7 +18,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _dniController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
-  String _docType = 'DNI'; // 'DNI' o 'CE'
+  String _docType = 'DNI';
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final version = await UpdateService.getCurrentVersion();
+    if (mounted) {
+      setState(() => _appVersion = 'v$version');
+    }
+  }
 
   @override
   void dispose() {
@@ -376,7 +391,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 24),
                       Center(
                         child: Text(
-                          'v1.2.0',
+                          _appVersion.isEmpty ? '' : _appVersion,
                           style: TextStyle(
                             color: Colors.grey.shade500,
                             fontSize: 12,

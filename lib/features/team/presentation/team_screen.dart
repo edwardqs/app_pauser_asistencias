@@ -1,12 +1,11 @@
-import 'dart:io' as io; // Alias para evitar conflicto
 import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
+import 'package:app_asistencias_pauser/core/platform/file_helper.dart';
+import 'package:app_asistencias_pauser/core/platform/location_helper.dart';
 import 'package:app_asistencias_pauser/core/presentation/widgets/skeleton_loader.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/team/data/team_repository.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -707,8 +706,7 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
   String _selectedType = 'IN';
   final _notesController = TextEditingController();
   bool _isLoading = false;
-  io.File? _evidenceFile;
-  String? _evidenceFileName;
+  CrossFile? _evidenceFile;
 
   // Inicializamos con valores por defecto para asegurar que siempre se vean
   List<Map<String, dynamic>> _absenceReasons = [
@@ -775,17 +773,13 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
   }
 
   Future<void> _pickEvidence() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
+    final result = await CrossFile.pick(
       allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
     );
 
-    if (result != null && result.files.single.path != null) {
+    if (result != null) {
       setState(() {
-        _evidenceFile = io.File(
-          result.files.single.path!,
-        ); // Uso de alias correcto
-        _evidenceFileName = result.files.single.name;
+        _evidenceFile = result;
       });
     }
   }
@@ -982,7 +976,7 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
                       onPressed: _pickEvidence,
                       icon: const Icon(Icons.attach_file),
                       label: Text(
-                        _evidenceFileName ?? 'Adjuntar Evidencia (PDF/IMG)',
+                        _evidenceFile?.name ?? 'Adjuntar Evidencia (PDF/IMG)',
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
@@ -1034,28 +1028,8 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
     );
   }
 
-  Future<Position?> _getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return null;
-    }
-
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        return null;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      return null;
-    }
-
-    return await Geolocator.getCurrentPosition();
+  Future<GeoPosition?> _getCurrentLocation() async {
+    return await LocationService().getCurrentPosition();
   }
 
   Future<void> _submit() async {
@@ -1097,7 +1071,10 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
       // Subir evidencia si existe
       String? evidenceUrl;
       if (_evidenceFile != null) {
-        evidenceUrl = await storage.uploadEvidence(_evidenceFile!);
+        evidenceUrl = await storage.uploadEvidence(
+          _evidenceFile!.bytes,
+          _evidenceFile!.name,
+        );
       }
 
       // Construir fechas

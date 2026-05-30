@@ -1,6 +1,6 @@
+import 'package:app_asistencias_pauser/core/platform/file_helper.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/team/data/team_repository.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -29,8 +29,7 @@ class _ManualAttendanceScreenState
   List<Map<String, dynamic>> _absenceReasons = [];
   bool _isLoadingReasons = true;
   bool _requiresEvidence = false;
-  String? _evidenceFilePath;
-  String? _evidenceFileName;
+  CrossFile? _evidenceFile;
 
   List<Map<String, dynamic>> _teamMembers = [];
   bool _loading = true;
@@ -84,15 +83,13 @@ class _ManualAttendanceScreenState
 
   Future<void> _pickFile() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
+      final result = await CrossFile.pick(
         allowedExtensions: ['jpg', 'pdf', 'png', 'jpeg'],
       );
 
       if (result != null) {
         setState(() {
-          _evidenceFilePath = result.files.single.path;
-          _evidenceFileName = result.files.single.name;
+          _evidenceFile = result;
         });
       }
     } catch (e) {
@@ -187,7 +184,7 @@ class _ManualAttendanceScreenState
     }
 
     // Validación de evidencia requerida
-    if (_requiresEvidence && _evidenceFilePath == null) {
+    if (_requiresEvidence && _evidenceFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -211,13 +208,10 @@ class _ManualAttendanceScreenState
 
       // Subir evidencia si existe
       String? evidenceUrl;
-      if (_evidenceFilePath != null && _evidenceFileName != null) {
-        // Generar nombre único para evitar colisiones
-        final uniqueName =
-            '${DateTime.now().millisecondsSinceEpoch}_$_evidenceFileName';
+      if (_evidenceFile != null) {
         evidenceUrl = await ref
             .read(teamRepositoryProvider)
-            .uploadEvidence(_evidenceFilePath!, uniqueName);
+            .uploadEvidence(_evidenceFile!.bytes, _evidenceFile!.name);
       }
 
       // Combinar fecha con horas
@@ -605,7 +599,7 @@ class _ManualAttendanceScreenState
 
                                   // Selector de Archivo (Condicional)
                                   if (_requiresEvidence ||
-                                      _evidenceFilePath != null) ...[
+                                      _evidenceFile != null) ...[
                                     Text(
                                       'Evidencia / Archivo ${_requiresEvidence ? "*" : "(Opcional)"}',
                                       style: const TextStyle(
@@ -624,7 +618,7 @@ class _ManualAttendanceScreenState
                                           border: Border.all(
                                             color:
                                                 _requiresEvidence &&
-                                                    _evidenceFilePath == null
+                                                    _evidenceFile == null
                                                 ? Colors.red.shade300
                                                 : Colors.grey.shade300,
                                             style: BorderStyle.solid,
@@ -637,32 +631,32 @@ class _ManualAttendanceScreenState
                                         child: Row(
                                           children: [
                                             Icon(
-                                              _evidenceFilePath != null
+                                              _evidenceFile != null
                                                   ? Icons.check_circle
                                                   : Icons.upload_file,
-                                              color: _evidenceFilePath != null
+                                              color: _evidenceFile != null
                                                   ? Colors.green
                                                   : Colors.grey,
                                             ),
                                             const SizedBox(width: 12),
                                             Expanded(
                                               child: Text(
-                                                _evidenceFileName ??
+                                                _evidenceFile?.name ??
                                                     'Seleccionar archivo (PDF, Imagen)',
                                                 style: TextStyle(
                                                   color:
-                                                      _evidenceFileName != null
+                                                      _evidenceFile != null
                                                       ? Colors.black
                                                       : Colors.grey.shade600,
                                                   fontWeight:
-                                                      _evidenceFileName != null
+                                                      _evidenceFile != null
                                                       ? FontWeight.w500
                                                       : FontWeight.normal,
                                                 ),
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
-                                            if (_evidenceFilePath != null)
+                                            if (_evidenceFile != null)
                                               IconButton(
                                                 icon: const Icon(
                                                   Icons.close,
@@ -670,8 +664,7 @@ class _ManualAttendanceScreenState
                                                 ),
                                                 onPressed: () {
                                                   setState(() {
-                                                    _evidenceFilePath = null;
-                                                    _evidenceFileName = null;
+                                                    _evidenceFile = null;
                                                   });
                                                 },
                                               ),
@@ -680,7 +673,7 @@ class _ManualAttendanceScreenState
                                       ),
                                     ),
                                     if (_requiresEvidence &&
-                                        _evidenceFilePath == null)
+                                        _evidenceFile == null)
                                       Padding(
                                         padding: const EdgeInsets.only(
                                           top: 4,

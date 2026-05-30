@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/auth/data/profile_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,20 +13,23 @@ class ProfileController extends AsyncNotifier<void> {
     // nothing to init
   }
 
-  Future<bool> updateProfilePicture(File imageFile) async {
+  Future<bool> updateProfilePicture(
+    Uint8List imageBytes,
+    String extension,
+  ) async {
     state = const AsyncValue.loading();
     try {
       final storage = ref.read(storageServiceProvider);
       final employeeId = storage.employeeId;
-      
+
       if (employeeId == null) {
         throw Exception('No hay sesión activa');
       }
 
       final repository = ref.read(profileRepositoryProvider);
-      final imageUrl = await repository.uploadProfilePicture(employeeId, imageFile);
+      final imageUrl =
+          await repository.uploadProfilePicture(employeeId, imageBytes, extension);
 
-      // Update local storage
       await storage.updateProfilePicture(imageUrl);
 
       state = const AsyncValue.data(null);

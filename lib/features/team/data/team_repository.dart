@@ -1,4 +1,4 @@
-import 'dart:io' as java_io;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -194,16 +194,13 @@ class TeamRepository {
   }
 
   /// Sube un archivo de evidencia
-  Future<String> uploadEvidence(String filePath, String fileName) async {
+  Future<String> uploadEvidence(Uint8List bytes, String fileName) async {
     try {
-      // Usar storage_service.dart idealmente, pero aquí acceso directo para rapidez
-      // Asumiendo que existe bucket 'evidence'
-      final file = java_io.File(filePath); // Necesitaremos importar dart:io
       final path = 'evidence/$fileName';
 
       await _supabase.storage
           .from('evidence')
-          .upload(path, file, fileOptions: const FileOptions(upsert: true));
+          .uploadBinary(path, bytes, fileOptions: const FileOptions(upsert: true));
 
       return _supabase.storage.from('evidence').getPublicUrl(path);
     } catch (e) {

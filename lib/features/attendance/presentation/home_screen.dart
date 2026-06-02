@@ -288,9 +288,17 @@ class AttendanceLogic {
     String? checkInTime,
     String? shift,
   }) async {
-    // Confirmación antes de registrar
     final now = DateTime.now();
     final horaActual = DateFormat('hh:mm a').format(now);
+
+    // Recalcular tardanza con el horario REAL seleccionado, no con scheduleData
+    if (checkInTime != null) {
+      final parts = checkInTime.split(':');
+      final h = int.tryParse(parts[0]) ?? 7;
+      final m = int.tryParse(parts[1]) ?? 0;
+      isTardanza = now.isAfter(DateTime(now.year, now.month, now.day, h, m));
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(

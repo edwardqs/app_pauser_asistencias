@@ -89,77 +89,46 @@ class AttendanceLogic {
       return;
     }
 
-    // Múltiples horarios - mostrar selector
-    final selected = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.schedule, color: Color(0xFF2563EB)),
-            SizedBox(width: 8),
-            Text('Seleccionar Turno', style: TextStyle(fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '¿Qué turno deseas registrar?',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            ),
-            SizedBox(height: 16),
-            ...schedules.map((s) {
-              final shiftName = s['shift'] as String? ?? 'UNICO';
-              final shiftLabel = shiftName == 'MAÑANA' ? '☀ Mañana'
-                  : shiftName == 'TARDE' ? '🌤 Tarde'
-                  : shiftName == 'NOCHE' ? '🌙 Noche'
-                  : '— Unico —';
-              final checkIn = (s['check_in_time'] as String? ?? '').substring(0, 5);
-              final checkOut = (s['check_out_time'] as String? ?? '').substring(0, 5);
-              return ListTile(
-                leading: Icon(
-                  shiftName == 'MAÑANA' ? Icons.wb_sunny
-                      : shiftName == 'TARDE' ? Icons.wb_twilight
-                      : shiftName == 'NOCHE' ? Icons.nightlight
-                      : Icons.schedule,
-                  color: shiftName == 'MAÑANA' ? Colors.orange
-                      : shiftName == 'TARDE' ? Colors.blue
-                      : shiftName == 'NOCHE' ? Colors.indigo
-                      : Colors.grey,
-                ),
-                title: Text(s['name'] as String? ?? 'Horario'),
-                subtitle: Text('$checkIn - $checkOut'),
-                trailing: Text(shiftLabel, style: TextStyle(fontWeight: FontWeight.bold)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.shade200),
-                ),
-                onTap: () => Navigator.of(ctx).pop(s),
-              );
-            }),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(null),
-            child: Text('Cancelar', style: TextStyle(color: Colors.grey[600])),
-          ),
-        ],
-      ),
-    );
+    // Múltiples horarios - auto-detectar el turno a marcar según la hora actual
+    final now = DateTime.now();
+    Map<String, dynamic>? targetShift;
+    Map<String, dynamic>? nextShift;
 
-    if (selected != null) {
-      await markAttendance(
-        context,
-        employeeId,
-        isTardanza: isTardanza,
-        scheduleName: selected['name'] as String?,
-        checkInTime: selected['check_in_time'] as String?,
-        shift: selected['shift'] as String?,
-      );
+    for (final s in schedules) {
+      final checkInStr = s['check_in_time'] as String?;
+      final checkOutStr = s['check_out_time'] as String?;
+      if (checkInStr == null || checkOutStr == null) continue;
+
+      final inParts = checkInStr.split(':');
+      final outParts = checkOutStr.split(':');
+      final checkIn = DateTime(now.year, now.month, now.day,
+          int.tryParse(inParts[0]) ?? 0, int.tryParse(inParts[1]) ?? 0);
+      final checkOut = DateTime(now.year, now.month, now.day,
+          int.tryParse(outParts[0]) ?? 0, int.tryParse(outParts[1]) ?? 0);
+
+      // Turno activo (dentro de su ventana de tiempo)
+      if (!now.isBefore(checkIn) && now.isBefore(checkOut)) {
+        targetShift = s;
+        break;
+      }
+
+      // Siguiente turno próximo (aún no comienza)
+      if (nextShift == null && now.isBefore(checkIn)) {
+        nextShift = s;
+      }
     }
+
+    // Prioridad: turno activo > próximo turno > último como fallback
+    targetShift ??= nextShift ?? schedules.last;
+
+    await markAttendance(
+      context,
+      employeeId,
+      isTardanza: isTardanza,
+      scheduleName: targetShift['name'] as String?,
+      checkInTime: targetShift['check_in_time'] as String?,
+      shift: targetShift['shift'] as String?,
+    );
   }
 
   Future<void> reportAbsence(BuildContext context, String employeeId) async {
@@ -1450,24 +1419,13 @@ class HomeScreen extends ConsumerWidget {
                                                 if (employeeId != null) {
                                                   // Usar pendingShifts (turnos aun no marcados hoy)
                                                   // Para empleados de un solo turno, pendingShifts == workDaySchedules
-                                                  if (pendingShifts.length > 1) {
-                                                    // Multiples turnos pendientes - mostrar selector
+                                                  if (pendingShifts.isNotEmpty) {
+                                                    // Auto-detectar turno a marcar
                                                     AttendanceLogic(ref).selectShiftAndMarkAttendance(
                                                       context,
                                                       employeeId,
                                                       pendingShifts,
                                                       isTardanza: isTardanza,
-                                                    );
-                                                  } else if (pendingShifts.length == 1) {
-                                                    // Un solo turno pendiente - marcar directo
-                                                    final schedule = pendingShifts.first;
-                                                    AttendanceLogic(ref).markAttendance(
-                                                      context,
-                                                      employeeId,
-                                                      isTardanza: isTardanza,
-                                                      scheduleName: schedule['name'] as String?,
-                                                      checkInTime: schedule['check_in_time'] as String?,
-                                                      shift: schedule['shift'] as String?,
                                                     );
                                                   } else {
                                                     // Fallback: sin turnos calculados, usar scheduleData

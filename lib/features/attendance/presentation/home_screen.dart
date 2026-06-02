@@ -1264,9 +1264,9 @@ class HomeScreen extends ConsumerWidget {
                                   curve: Curves.elasticOut,
                                   duration: 800.ms,
                                 ),
-                              ] else if (isFaltaInjustificada ||
+                              ] else if ((isFaltaInjustificada ||
                                   isDayComplete ||
-                                  isCheckedIn) ...[
+                                  isCheckedIn) && !hasPendingShifts) ...[
                                 // COMPLETED STATE
                                 Container(
                                   width: double.infinity,

@@ -72,12 +72,21 @@ class AttendanceLogic {
     String employeeId,
     List<Map<String, dynamic>> schedules, {
     bool isTardanza = false,
+    Set<String> alreadyMarkedShifts = const <String>{},
   }) async {
     if (schedules.isEmpty) return;
 
-    if (schedules.length == 1) {
+    // Filtrar turnos ya marcados (por si pendingShifts no se actualizó a tiempo)
+    final unmarked = schedules.where((s) {
+      final shift = s['shift'] as String?;
+      return shift == null || !alreadyMarkedShifts.contains(shift);
+    }).toList();
+
+    if (unmarked.isEmpty) return;
+
+    if (unmarked.length == 1) {
       // Solo un horario, marcar directo
-      final schedule = schedules.first;
+      final schedule = unmarked.first;
       await markAttendance(
         context,
         employeeId,
@@ -1420,12 +1429,13 @@ class HomeScreen extends ConsumerWidget {
                                                   // Usar pendingShifts (turnos aun no marcados hoy)
                                                   // Para empleados de un solo turno, pendingShifts == workDaySchedules
                                                   if (pendingShifts.isNotEmpty) {
-                                                    // Auto-detectar turno a marcar
+                                                    // Auto-detectar turno a marcar (filtrando los ya marcados)
                                                     AttendanceLogic(ref).selectShiftAndMarkAttendance(
                                                       context,
                                                       employeeId,
                                                       pendingShifts,
                                                       isTardanza: isTardanza,
+                                                      alreadyMarkedShifts: markedShifts.whereType<String>().toSet(),
                                                     );
                                                   } else {
                                                     // Fallback: sin turnos calculados, usar scheduleData

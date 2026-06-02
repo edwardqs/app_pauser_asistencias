@@ -1,7 +1,7 @@
 import 'package:app_asistencias_pauser/core/platform/file_helper.dart';
 import 'package:app_asistencias_pauser/core/services/auth_notifier.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
-import 'package:app_asistencias_pauser/core/services/update_service.dart';
+
 import 'package:app_asistencias_pauser/features/auth/presentation/profile_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -256,56 +256,6 @@ class ProfileScreen extends ConsumerWidget {
                           icon: Icons.store,
                           title: 'Unidad de Negocio',
                           value: storage.businessUnit ?? 'General',
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final update = await UpdateService.checkForUpdate();
-                              if (!context.mounted) return;
-                              if (update == null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Error al verificar actualización')),
-                                );
-                                return;
-                              }
-                              final currentBuild = await UpdateService.getCurrentBuildNumber();
-                              if (update.buildNumber <= currentBuild) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Ya tienes la última versión (${update.version})'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                                return;
-                              }
-                              final confirmed = await showDialog<bool>(
-                                context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text('Nueva versión'),
-                                  content: Text('Versión ${update.version} disponible\n\n${update.releaseNotes}'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.of(ctx).pop(false),
-                                      child: const Text('Más tarde'),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () => Navigator.of(ctx).pop(true),
-                                      child: const Text('Actualizar'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                              if (confirmed == true) {
-                                UpdateService.downloadAndInstall(update);
-                              }
-                            },
-                            icon: const Icon(Icons.system_update),
-                            label: const Text('Verificar actualización'),
-                          ),
                         ),
 
                         const SizedBox(height: 48),

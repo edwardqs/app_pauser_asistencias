@@ -18,6 +18,9 @@ class CrossFile {
     FileType type = FileType.any,
     List<String>? allowedExtensions,
   }) async {
+    if (allowedExtensions != null && allowedExtensions.isNotEmpty) {
+      type = FileType.custom;
+    }
     final result = await FilePicker.platform.pickFiles(
       type: type,
       allowedExtensions: allowedExtensions,

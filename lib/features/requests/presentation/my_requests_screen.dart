@@ -982,13 +982,24 @@ class _RequestsHistoryState extends ConsumerState<_RequestsHistory> {
                 const SizedBox(height: 20),
                 GestureDetector(
                   onTap: () async {
-                    final result = await CrossFile.pick(
-                      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-                    );
-                    if (result != null) {
-                      setModalState(() {
-                        selectedFile = result;
-                      });
+                    try {
+                      final result = await CrossFile.pick(
+                        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+                      );
+                      if (result != null && context.mounted) {
+                        setModalState(() {
+                          selectedFile = result;
+                        });
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error al seleccionar archivo: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
                     }
                   },
                   child: Container(

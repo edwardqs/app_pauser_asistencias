@@ -65,22 +65,35 @@ class TeamRepository {
     }
   }
 
-  /// Valida o rechaza una asistencia
+  /// Valida, rechaza o corrige una asistencia
   Future<void> validateAttendance({
     required String attendanceId,
     required String supervisorId,
     required bool approved,
     String? notes,
+    String? recordType,
+    DateTime? checkIn,
+    DateTime? checkOut,
   }) async {
     try {
+      final params = <String, dynamic>{
+        'p_attendance_id': attendanceId,
+        'p_supervisor_id': supervisorId,
+        'p_validated': recordType == 'ASISTIO' ? true : approved,
+        'p_notes': notes,
+        'p_record_type': recordType,
+      };
+
+      if (checkIn != null) {
+        params['p_check_in'] = checkIn.toUtc().toIso8601String();
+      }
+      if (checkOut != null) {
+        params['p_check_out'] = checkOut.toUtc().toIso8601String();
+      }
+
       final response = await _supabase.rpc(
         'supervisor_validate_attendance',
-        params: {
-          'p_attendance_id': attendanceId,
-          'p_supervisor_id': supervisorId,
-          'p_validated': approved,
-          'p_notes': notes,
-        },
+        params: params,
       );
 
       if (response['success'] == false) {

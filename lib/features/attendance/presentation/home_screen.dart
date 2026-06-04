@@ -82,7 +82,14 @@ class AttendanceLogic {
       return shift == null || !alreadyMarkedShifts.contains(shift);
     }).toList();
 
-    if (unmarked.isEmpty) return;
+    if (unmarked.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ya registraste todos los turnos de hoy')),
+        );
+      }
+      return;
+    }
 
     if (unmarked.length == 1) {
       // Solo un horario, marcar directo
@@ -93,13 +100,14 @@ class AttendanceLogic {
         isTardanza: isTardanza,
         scheduleName: schedule['name'] as String?,
         checkInTime: schedule['check_in_time'] as String?,
+        toleranceMinutes: (schedule['tolerance_minutes'] as num?)?.toInt() ?? 0,
         shift: schedule['shift'] as String?,
       );
       return;
     }
 
     // Múltiples horarios - auto-detectar el turno a marcar según la hora actual
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc().add(const Duration(hours: -5));
     Map<String, dynamic>? targetShift;
     Map<String, dynamic>? nextShift;
 
@@ -112,8 +120,12 @@ class AttendanceLogic {
       final outParts = checkOutStr.split(':');
       final checkIn = DateTime(now.year, now.month, now.day,
           int.tryParse(inParts[0]) ?? 0, int.tryParse(inParts[1]) ?? 0);
-      final checkOut = DateTime(now.year, now.month, now.day,
+      var checkOut = DateTime(now.year, now.month, now.day,
           int.tryParse(outParts[0]) ?? 0, int.tryParse(outParts[1]) ?? 0);
+      // Turno nocturno (cruza medianoche): check_out pertenece al día siguiente
+      if ((int.tryParse(outParts[0]) ?? 0) < (int.tryParse(inParts[0]) ?? 0)) {
+        checkOut = checkOut.add(const Duration(hours: 24));
+      }
 
       // Turno activo (dentro de su ventana de tiempo)
       if (!now.isBefore(checkIn) && now.isBefore(checkOut)) {
@@ -130,12 +142,15 @@ class AttendanceLogic {
     // Prioridad: turno activo > próximo turno > último como fallback
     targetShift ??= nextShift ?? schedules.last;
 
+    if (targetShift == null) return;
+
     await markAttendance(
       context,
       employeeId,
       isTardanza: isTardanza,
       scheduleName: targetShift['name'] as String?,
       checkInTime: targetShift['check_in_time'] as String?,
+      toleranceMinutes: (targetShift['tolerance_minutes'] as num?)?.toInt() ?? 0,
       shift: targetShift['shift'] as String?,
     );
   }
@@ -264,17 +279,20 @@ class AttendanceLogic {
     bool isTardanza = false,
     String? scheduleName,
     String? checkInTime,
+    int toleranceMinutes = 0,
     String? shift,
   }) async {
-    final now = DateTime.now();
+    final now = DateTime.now().toUtc().add(const Duration(hours: -5));
     final horaActual = DateFormat('hh:mm a').format(now);
 
-    // Recalcular tardanza con el horario REAL seleccionado, no con scheduleData
+    // Recalcular tardanza con el horario REAL + tolerancia
     if (checkInTime != null) {
       final parts = checkInTime.split(':');
       final h = int.tryParse(parts[0]) ?? 7;
       final m = int.tryParse(parts[1]) ?? 0;
-      isTardanza = now.isAfter(DateTime(now.year, now.month, now.day, h, m));
+      final limit = DateTime(now.year, now.month, now.day, h, m)
+          .add(Duration(minutes: toleranceMinutes));
+      isTardanza = now.isAfter(limit);
     }
 
     final confirmed = await showDialog<bool>(
@@ -534,8 +552,8 @@ class HomeScreen extends ConsumerWidget {
           final vacation = statusData?['vacation'] as Map<String, dynamic>?;
           final isOnVacation = statusData?['is_on_vacation'] as bool? ?? false;
 
-          // Lógica de Horario Estricto
-          final now = DateTime.now();
+          // Hora Perú (UTC-5) — coincide con el backend
+          final now = DateTime.now().toUtc().add(const Duration(hours: -5));
           // Usamos la misma cadena de fecha que se usa en la query del repositorio
           final todayStr =
               "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
@@ -596,9 +614,13 @@ class HomeScreen extends ConsumerWidget {
           
           // Hora límite para CIERRE/INASISTENCIA: basada en check_out del horario o 18:00 por defecto
           final checkOutParts = (scheduleData?['check_out_time'] as String? ?? '18:00:00').split(':');
-          final absenceLimit = DateTime(now.year, now.month, now.day,
+          final checkInPartsAL = (scheduleData?['check_in_time'] as String? ?? '07:00:00').split(':');
+          var absenceLimit = DateTime(now.year, now.month, now.day,
               int.tryParse(checkOutParts[0]) ?? 18,
               int.tryParse(checkOutParts[1]) ?? 0);
+          if ((int.tryParse(checkOutParts[0]) ?? 0) < (int.tryParse(checkInPartsAL[0]) ?? 0)) {
+            absenceLimit = absenceLimit.add(const Duration(hours: 24));
+          }
 
           final isTardanza = now.isAfter(tardanzaLimit);
 
@@ -619,14 +641,37 @@ class HomeScreen extends ConsumerWidget {
               .where((s) {
                 if (markedShifts.contains(s['shift'] as String?)) return false;
                 final checkOutStr = s['check_out_time'] as String? ?? '18:00:00';
-                final parts = checkOutStr.split(':');
-                final shiftEnd = DateTime(now.year, now.month, now.day,
-                    int.tryParse(parts[0]) ?? 18,
-                    int.tryParse(parts[1]) ?? 0);
+                final checkInStr = s['check_in_time'] as String? ?? '07:00:00';
+                final outParts = checkOutStr.split(':');
+                final inParts = checkInStr.split(':');
+                var shiftEnd = DateTime(now.year, now.month, now.day,
+                    int.tryParse(outParts[0]) ?? 18,
+                    int.tryParse(outParts[1]) ?? 0);
+                // Turno nocturno (cruza medianoche): shiftEnd al día siguiente
+                if ((int.tryParse(outParts[0]) ?? 0) < (int.tryParse(inParts[0]) ?? 0)) {
+                  shiftEnd = shiftEnd.add(const Duration(hours: 24));
+                }
                 return now.isBefore(shiftEnd);
               })
               .toList();
           final hasPendingShifts = workDaySchedules.length > 1 && pendingShifts.isNotEmpty;
+
+          // ¿Hay algún turno pendiente dentro de su ventana activa?
+          final hasActiveShift = pendingShifts.any((s) {
+            final checkInStr = s['check_in_time'] as String?;
+            final checkOutStr = s['check_out_time'] as String?;
+            if (checkInStr == null || checkOutStr == null) return false;
+            final inParts = checkInStr.split(':');
+            final outParts = checkOutStr.split(':');
+            final checkIn = DateTime(now.year, now.month, now.day,
+                int.tryParse(inParts[0]) ?? 0, int.tryParse(inParts[1]) ?? 0);
+            var checkOut = DateTime(now.year, now.month, now.day,
+                int.tryParse(outParts[0]) ?? 0, int.tryParse(outParts[1]) ?? 0);
+            if ((int.tryParse(outParts[0]) ?? 0) < (int.tryParse(inParts[0]) ?? 0)) {
+              checkOut = checkOut.add(const Duration(hours: 24));
+            }
+            return !now.isBefore(checkIn) && now.isBefore(checkOut);
+          });
 
           // Clave unica del estado para AnimatedSwitcher (fade de 300ms)
           final stateKey = isOnVacation ? 'vacation'
@@ -1445,6 +1490,7 @@ class HomeScreen extends ConsumerWidget {
                                                       isTardanza: isTardanza,
                                                       scheduleName: scheduleData?['name'] as String?,
                                                       checkInTime: scheduleData?['check_in_time'] as String?,
+                                                      toleranceMinutes: (scheduleData?['tolerance_minutes'] as num?)?.toInt() ?? 0,
                                                       shift: scheduleData?['shift'] as String?,
                                                     );
                                                   }

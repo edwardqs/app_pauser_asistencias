@@ -65,7 +65,10 @@ class UpdateService {
   /// Descarga el APK y lo abre para instalar
   static Future<String> downloadAndInstall(UpdateInfo update) async {
     final dir = await getTemporaryDirectory();
-    final filePath = '${dir.path}/app_asistencias_${update.version}.apk';
+    // Nombre unico por descarga para evitar que Android instale un archivo
+    // cacheado con el mismo nombre de una descarga anterior fallida.
+    final filePath =
+        '${dir.path}/app_asistencias_${update.version}_${DateTime.now().millisecondsSinceEpoch}.apk';
 
     final response = await http.get(Uri.parse(update.apkUrl));
     if (response.statusCode != 200) {

@@ -155,6 +155,17 @@ class AttendanceRepository {
     return Map<String, dynamic>.from(response as Map);
   }
 
+  /// Consulta al servidor: turno activo ahora (hora Peru del servidor) y si
+  /// el empleado ya marco ese turno hoy. Es la unica fuente de decision del
+  /// boton "Marcar": no depende del reloj ni del cache del dispositivo.
+  Future<Map<String, dynamic>> getActiveCheckinShift(String employeeId) async {
+    final response = await _supabase.rpc(
+      'get_active_checkin_shift',
+      params: {'p_employee_id': employeeId},
+    );
+    return Map<String, dynamic>.from(response as Map);
+  }
+
   Future<void> checkIn({
     required String employeeId,
     required double lat,

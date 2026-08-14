@@ -76,6 +76,68 @@ class AttendanceLogic {
 
   AttendanceLogic(this.ref);
 
+  /// Flujo del boton "Marcar": consulta al servidor el turno activo (hora
+  /// Peru del servidor) y si ya se marco. Sin logica local de reloj/cache.
+  Future<void> checkInSmart(BuildContext context, String employeeId) async {
+    if (ref.read(actionLoadingNotifierProvider).value) return;
+
+    ref.read(actionLoadingNotifierProvider).value = true;
+    try {
+      final result = await ref
+          .read(attendanceRepositoryProvider)
+          .getActiveCheckinShift(employeeId);
+
+      final hasActive = result['has_active_shift'] == true;
+      final alreadyMarked = result['already_marked'] == true;
+
+      if (!hasActive) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                (result['message'] as String?) ??
+                    'No tienes un horario activo en este momento',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (alreadyMarked) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Ya marcaste tu horario'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final shiftInfo = result['shift'] as Map<String, dynamic>?;
+      if (shiftInfo == null) return;
+
+      await markAttendance(
+        context,
+        employeeId,
+        scheduleName: shiftInfo['name'] as String?,
+        checkInTime: shiftInfo['check_in_time'] as String?,
+        shift: shiftInfo['shift'] as String?,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al consultar tu horario: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      ref.read(actionLoadingNotifierProvider).value = false;
+    }
+  }
+
   Future<void> selectShiftAndMarkAttendance(
     BuildContext context,
     String employeeId,
@@ -1625,14 +1687,13 @@ class HomeScreen extends ConsumerWidget {
                                         onPressed: (isActionLoading)
                                             ? null
                                             : () {
-                                                if (employeeId != null && pendingShifts.isNotEmpty) {
-                                                  // Auto-detectar turno a marcar (filtrando los ya marcados)
-                                                  AttendanceLogic(ref).selectShiftAndMarkAttendance(
+                                                if (employeeId != null) {
+                                                  // Consulta al servidor: turno
+                                                  // activo + ya marcado. Sin
+                                                  // logica local de reloj/cache.
+                                                  AttendanceLogic(ref).checkInSmart(
                                                     context,
                                                     employeeId,
-                                                    pendingShifts,
-                                                    isTardanza: isTardanza,
-                                                    alreadyMarkedShifts: markedShifts.whereType<String>().toSet(),
                                                   );
                                                 }
                                               },

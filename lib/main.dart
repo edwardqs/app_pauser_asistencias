@@ -3,8 +3,6 @@ import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/core/theme/app_theme.dart';
 import 'package:app_asistencias_pauser/features/notifications/data/push_notifications_service.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,12 +12,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es');
-
-  // Firebase solo en movil (Android/iOS). En web no hay config FCM web y
-  // Firebase.initializeApp() sin opciones rompe el arranque.
-  if (!kIsWeb) {
-    await Firebase.initializeApp();
-  }
 
   // Initialize Supabase
   await Supabase.initialize(
@@ -42,11 +34,10 @@ Future<void> main() async {
     } catch (_) {}
   }
 
-  if (!kIsWeb) {
-    final pushService = PushNotificationsService(storage: storageService);
-    await pushService.init();
-    await pushService.registerDevice();
-  }
+  // En movil inicializa Firebase y registra el token FCM; en web es no-op.
+  final pushService = PushNotificationsService(storage: storageService);
+  await pushService.init();
+  await pushService.registerDevice();
 
   runApp(
     ProviderScope(

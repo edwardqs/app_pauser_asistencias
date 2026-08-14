@@ -836,7 +836,7 @@ class HomeScreen extends ConsumerWidget {
           // Hora límite para TARDANZA: usa el turno pendiente/activo, no el primer horario.
           final uiTargetShift = pendingShifts.isNotEmpty
               ? selectTargetShift(schedules: pendingShifts, now: now)
-              : scheduleData;
+              : null;
           final checkInParts =
               ((uiTargetShift?['check_in_time'] as String?) ?? '07:00:00').split(':');
           final toleranceMins = ((uiTargetShift?['tolerance_minutes'] as num?)?.toInt()) ?? 0;
@@ -1592,8 +1592,8 @@ class HomeScreen extends ConsumerWidget {
                               ] else ...[
                                 // ACTION STATE
 
-                                // Horario asignado
-                                if (scheduleData != null) ...[
+                                // Horario vigente (pendiente de marcar), no el primero del dia.
+                                if (uiTargetShift != null) ...[
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1624,7 +1624,7 @@ class HomeScreen extends ConsumerWidget {
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                scheduleData['name'] ?? 'Horario asignado',
+                                                uiTargetShift['name'] ?? 'Horario asignado',
                                                 style: TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 13,
@@ -1634,7 +1634,7 @@ class HomeScreen extends ConsumerWidget {
                                                 ),
                                               ),
                                               Text(
-                                                'Entrada: ${(scheduleData['check_in_time'] as String? ?? '').substring(0, 5)}  •  Salida: ${(scheduleData['check_out_time'] as String? ?? '').substring(0, 5)}',
+                                                'Entrada: ${(uiTargetShift['check_in_time'] as String? ?? '').substring(0, 5)}  •  Salida: ${(uiTargetShift['check_out_time'] as String? ?? '').substring(0, 5)}',
                                                 style: TextStyle(
                                                   fontSize: 12,
                                                   color: isTardanza

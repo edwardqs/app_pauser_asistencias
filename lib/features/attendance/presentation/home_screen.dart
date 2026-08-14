@@ -260,6 +260,7 @@ class AttendanceLogic {
       ref.invalidate(employeeStatusProvider(employeeId));
       ref.invalidate(todayAllAttendancesProvider(employeeId));
       ref.invalidate(openAttendancesProvider(employeeId));
+      ref.invalidate(activeSchedulesProvider(employeeId));
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -386,6 +387,7 @@ class AttendanceLogic {
         }
         ref.invalidate(employeeStatusProvider(employeeId));
         ref.invalidate(todayAllAttendancesProvider(employeeId));
+        ref.invalidate(openAttendancesProvider(employeeId));
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -636,6 +638,8 @@ class AttendanceLogic {
 
       ref.invalidate(employeeStatusProvider(employeeId));
       ref.invalidate(todayAllAttendancesProvider(employeeId));
+      ref.invalidate(openAttendancesProvider(employeeId));
+      ref.invalidate(activeSchedulesProvider(employeeId));
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -895,9 +899,11 @@ class HomeScreen extends ConsumerWidget {
                 child: RefreshIndicator(
                   onRefresh: () async {
                     if (employeeId != null) {
-                      // Invalidar provider para recargar datos
+                      // Invalidar provider para recargar datos (siempre consulta al servidor)
                       ref.invalidate(employeeStatusProvider(employeeId));
                       ref.invalidate(todayAllAttendancesProvider(employeeId));
+                      ref.invalidate(openAttendancesProvider(employeeId));
+                      ref.invalidate(activeSchedulesProvider(employeeId));
                       // Esperar a que se complete la recarga para detener el indicador
                       try {
                         await ref.read(

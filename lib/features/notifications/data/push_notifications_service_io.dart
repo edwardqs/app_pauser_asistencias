@@ -32,10 +32,14 @@ class PushNotificationsService {
   }
 
   Future<void> init() async {
-    if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp();
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Firebase no disponible: $e');
     }
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
   Future<bool> requestPermission() async {

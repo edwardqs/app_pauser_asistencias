@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:app_asistencias_pauser/core/router/app_router.dart';
 import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
@@ -24,7 +25,7 @@ Future<void> main() async {
 
   // Clear session on fresh install or version update to prevent
   // stale sessions from persisting across device installs or builds.
-  const appBuildSignature = '1.3.23+36';
+  const appBuildSignature = '1.3.24+37';
   final storedVersion = storageService.appVersion;
   if (storedVersion != appBuildSignature) {
     await storageService.clearSession();
@@ -34,10 +35,14 @@ Future<void> main() async {
     } catch (_) {}
   }
 
-  // En movil inicializa Firebase y registra el token FCM; en web es no-op.
-  final pushService = PushNotificationsService(storage: storageService);
-  await pushService.init();
-  await pushService.registerDevice();
+  // Push en segundo plano: NUNCA bloquea ni rompe el arranque de la app.
+  try {
+    final pushService = PushNotificationsService(storage: storageService);
+    await pushService.init();
+    unawaited(pushService.registerDevice());
+  } catch (_) {
+    // Si Firebase falla, la app debe arrancar igual sin notificaciones.
+  }
 
   runApp(
     ProviderScope(

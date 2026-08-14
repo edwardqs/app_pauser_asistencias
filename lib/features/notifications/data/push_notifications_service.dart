@@ -30,6 +30,7 @@ class PushNotificationsService {
   }
 
   Future<void> init() async {
+    if (kIsWeb) return;
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
@@ -59,6 +60,7 @@ class PushNotificationsService {
   }
 
   Future<void> registerDevice() async {
+    if (kIsWeb) return;
     final employeeId = _storage.employeeId;
     if (employeeId == null) return;
 

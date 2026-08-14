@@ -4,6 +4,7 @@ import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/core/theme/app_theme.dart';
 import 'package:app_asistencias_pauser/features/notifications/data/push_notifications_service.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +15,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es');
 
-  await Firebase.initializeApp();
+  // Firebase solo en movil (Android/iOS). En web no hay config FCM web y
+  // Firebase.initializeApp() sin opciones rompe el arranque.
+  if (!kIsWeb) {
+    await Firebase.initializeApp();
+  }
 
   // Initialize Supabase
   await Supabase.initialize(
@@ -37,9 +42,11 @@ Future<void> main() async {
     } catch (_) {}
   }
 
-  final pushService = PushNotificationsService(storage: storageService);
-  await pushService.init();
-  await pushService.registerDevice();
+  if (!kIsWeb) {
+    final pushService = PushNotificationsService(storage: storageService);
+    await pushService.init();
+    await pushService.registerDevice();
+  }
 
   runApp(
     ProviderScope(

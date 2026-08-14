@@ -101,36 +101,42 @@ class AttendanceLogic {
       return;
     }
 
-    if (unmarked.length == 1) {
-      // Solo un horario, marcar directo
-      final schedule = unmarked.first;
-      await markAttendance(
-        context,
-        employeeId,
-        isTardanza: isTardanza,
-        scheduleName: schedule['name'] as String?,
-        checkInTime: schedule['check_in_time'] as String?,
-        toleranceMinutes: (schedule['tolerance_minutes'] as num?)?.toInt() ?? 0,
-        shift: schedule['shift'] as String?,
-      );
-      return;
-    }
-
-    // Múltiples horarios - elegir el turno activo o el siguiente pendiente.
+    // Turno objetivo: el activo o el siguiente pendiente.
     final now = nowPeru();
-    final targetShift = selectTargetShift(
-      schedules: unmarked,
-      now: now,
-    );
+    final targetShift = unmarked.length == 1
+        ? unmarked.first
+        : selectTargetShift(schedules: unmarked, now: now);
 
     if (targetShift == null) return;
+
+    // Nunca marcar fuera de la ventana del turno: si aun no empieza o ya termino.
+    final checkInStr = targetShift['check_in_time'] as String?;
+    final checkOutStr = targetShift['check_out_time'] as String?;
+    if (checkInStr != null && checkOutStr != null) {
+      final shiftActive = isShiftActive(now, checkInStr, checkOutStr);
+      if (!shiftActive) {
+        final targetCheckIn = DateTime(now.year, now.month, now.day,
+            int.tryParse(checkInStr.split(':')[0]) ?? 0,
+            int.tryParse(checkInStr.split(':')[1]) ?? 0);
+        final shiftEnd = scheduledCheckoutForShift(now, checkInStr, checkOutStr);
+        final message = now.isBefore(targetCheckIn)
+            ? 'Tu turno ${normalizeShift(targetShift['shift'] as String?)} aun no empieza. Inicia a las ${checkInStr.substring(0, 5)}.'
+            : 'Tu turno ${normalizeShift(targetShift['shift'] as String?)} ya termino (salida ${checkOutStr.substring(0, 5)}).';
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message), backgroundColor: Colors.orange),
+          );
+        }
+        return;
+      }
+    }
 
     await markAttendance(
       context,
       employeeId,
       isTardanza: isTardanza,
       scheduleName: targetShift['name'] as String?,
-      checkInTime: targetShift['check_in_time'] as String?,
+      checkInTime: checkInStr,
       toleranceMinutes: (targetShift['tolerance_minutes'] as num?)?.toInt() ?? 0,
       shift: targetShift['shift'] as String?,
     );
@@ -768,6 +774,12 @@ class HomeScreen extends ConsumerWidget {
               })
               .toList();
           final hasPendingShifts = workDaySchedules.length > 1 && pendingShifts.isNotEmpty;
+          // Solo se puede marcar si algun turno pendiente esta dentro de su ventana.
+          final hasActiveShift = pendingShifts.any((s) {
+            final inT = s['check_in_time'] as String?;
+            final outT = s['check_out_time'] as String?;
+            return inT != null && outT != null && isShiftActive(now, inT, outT);
+          });
 
           // Hora límite para TARDANZA: usa el turno pendiente/activo, no el primer horario.
           final uiTargetShift = pendingShifts.isNotEmpty
@@ -1624,33 +1636,18 @@ class HomeScreen extends ConsumerWidget {
                                     valueListenable: loadingNotifier,
                                     builder: (context, isActionLoading, child) {
                                       return ElevatedButton(
-                                        onPressed: (isActionLoading)
+                                        onPressed: (isActionLoading || !hasActiveShift)
                                             ? null
                                             : () {
-                                                if (employeeId != null) {
-                                                  // Usar pendingShifts (turnos aun no marcados hoy)
-                                                  // Para empleados de un solo turno, pendingShifts == workDaySchedules
-                                                  if (pendingShifts.isNotEmpty) {
-                                                    // Auto-detectar turno a marcar (filtrando los ya marcados)
-                                                    AttendanceLogic(ref).selectShiftAndMarkAttendance(
-                                                      context,
-                                                      employeeId,
-                                                      pendingShifts,
-                                                      isTardanza: isTardanza,
-                                                      alreadyMarkedShifts: markedShifts.whereType<String>().toSet(),
-                                                    );
-                                                  } else {
-                                                    // Fallback: sin turnos calculados, usar scheduleData
-                                                    AttendanceLogic(ref).markAttendance(
-                                                      context,
-                                                      employeeId,
-                                                      isTardanza: isTardanza,
-                                                      scheduleName: scheduleData?['name'] as String?,
-                                                      checkInTime: scheduleData?['check_in_time'] as String?,
-                                                      toleranceMinutes: (scheduleData?['tolerance_minutes'] as num?)?.toInt() ?? 0,
-                                                      shift: scheduleData?['shift'] as String?,
-                                                    );
-                                                  }
+                                                if (employeeId != null && pendingShifts.isNotEmpty) {
+                                                  // Auto-detectar turno a marcar (filtrando los ya marcados)
+                                                  AttendanceLogic(ref).selectShiftAndMarkAttendance(
+                                                    context,
+                                                    employeeId,
+                                                    pendingShifts,
+                                                    isTardanza: isTardanza,
+                                                    alreadyMarkedShifts: markedShifts.whereType<String>().toSet(),
+                                                  );
                                                 }
                                               },
                                          style: ElevatedButton.styleFrom(

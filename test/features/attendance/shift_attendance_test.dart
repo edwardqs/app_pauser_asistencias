@@ -82,4 +82,26 @@ void main() {
       expect(checkout, DateTime(2026, 8, 13, 13));
     });
   });
+
+  group('ventana de marcacion', () {
+    test('es activa dentro del rango del turno', () {
+      expect(isShiftActive(DateTime(2026, 8, 13, 8), '07:00:00', '13:00:00'), isTrue);
+    });
+
+    test('no es activa antes de que empiece el turno', () {
+      expect(isShiftActive(DateTime(2026, 8, 13, 6, 30), '07:00:00', '13:00:00'), isFalse);
+    });
+
+    test('no es activa despues de que termina el turno', () {
+      expect(isShiftActive(DateTime(2026, 8, 13, 13, 1), '07:00:00', '13:00:00'), isFalse);
+    });
+
+    test('turno nocturno activo despues de medianoche', () {
+      expect(isShiftActive(DateTime(2026, 8, 14, 2), '19:00:00', '03:00:00'), isTrue);
+    });
+
+    test('turno nocturno inactivo antes del inicio', () {
+      expect(isShiftActive(DateTime(2026, 8, 13, 18), '19:00:00', '03:00:00'), isFalse);
+    });
+  });
 }

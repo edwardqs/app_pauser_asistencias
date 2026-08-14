@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:app_asistencias_pauser/core/services/auth_notifier.dart';
 import 'package:app_asistencias_pauser/features/attendance/presentation/home_screen.dart';
@@ -54,19 +55,28 @@ class AuthController extends AsyncNotifier<void> {
         final restrictionMessage = response['restriction_message'] as String?;
 
         // ---------------------------------------------------------
-        // AUTENTICACIÓN REAL CON SUPABASE AUTH (Necesario para RLS)
+        // SESIÓN REAL CON SUPABASE AUTH (Necesario para RLS)
+        // mobile_login firma un JWT con role=authenticated en el backend.
+        // Lo inyectamos como access token: la app queda "logueada" ante
+        // PostgREST sin necesidad de crear usuarios en auth.users.
         // ---------------------------------------------------------
-        final email = response['email'] as String?;
-        if (email != null && email.isNotEmpty) {
+        final token = response['token'] as String?;
+        if (token != null && token.isNotEmpty) {
           try {
-            // Iniciamos sesión en Supabase Auth usando el email devuelto por mobile_login
-            // y la contraseña que el usuario ingresó.
-            await Supabase.instance.client.auth.signInWithPassword(
-              email: email,
-              password: password,
-            );
+            final sessionJson = jsonEncode({
+              'access_token': token,
+              'expires_in': 86400,
+              'token_type': 'bearer',
+              'user': {
+                'id': employeeId,
+                'email': response['email'] ?? '',
+                'role': 'authenticated',
+              },
+            });
+            await Supabase.instance.client.auth.setInitialSession(sessionJson);
           } catch (authError) {
-            // No bloqueamos el login de la app, pero RLS podría fallar si se requiere escritura.
+            // No bloqueamos el login de la app; sin sesión RLS no aplica
+            // escrituras, pero el resto de la app sigue funcionando.
           }
         }
 

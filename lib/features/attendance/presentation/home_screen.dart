@@ -109,18 +109,18 @@ class AttendanceLogic {
 
     if (targetShift == null) return;
 
-    // Nunca marcar fuera de la ventana del turno: si aun no empieza o ya termino.
+    // Nunca marcar fuera de la ventana del turno (30 min antes hasta el fin).
     final checkInStr = targetShift['check_in_time'] as String?;
     final checkOutStr = targetShift['check_out_time'] as String?;
     if (checkInStr != null && checkOutStr != null) {
-      final shiftActive = isShiftActive(now, checkInStr, checkOutStr);
-      if (!shiftActive) {
+      final markable = isShiftMarkable(now, checkInStr, checkOutStr);
+      if (!markable) {
         final targetCheckIn = DateTime(now.year, now.month, now.day,
             int.tryParse(checkInStr.split(':')[0]) ?? 0,
             int.tryParse(checkInStr.split(':')[1]) ?? 0);
         final shiftEnd = scheduledCheckoutForShift(now, checkInStr, checkOutStr);
         final message = now.isBefore(targetCheckIn)
-            ? 'Tu turno ${normalizeShift(targetShift['shift'] as String?)} aun no empieza. Inicia a las ${checkInStr.substring(0, 5)}.'
+            ? 'Tu turno ${normalizeShift(targetShift['shift'] as String?)} inicia a las ${checkInStr.substring(0, 5)}. Puedes marcar desde 30 min antes.'
             : 'Tu turno ${normalizeShift(targetShift['shift'] as String?)} ya termino (salida ${checkOutStr.substring(0, 5)}).';
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -774,11 +774,12 @@ class HomeScreen extends ConsumerWidget {
               })
               .toList();
           final hasPendingShifts = workDaySchedules.length > 1 && pendingShifts.isNotEmpty;
-          // Solo se puede marcar si algun turno pendiente esta dentro de su ventana.
+          // Solo se puede marcar si algun turno pendiente esta dentro de su
+          // ventana de marcacion (30 min antes del inicio hasta el fin).
           final hasActiveShift = pendingShifts.any((s) {
             final inT = s['check_in_time'] as String?;
             final outT = s['check_out_time'] as String?;
-            return inT != null && outT != null && isShiftActive(now, inT, outT);
+            return inT != null && outT != null && isShiftMarkable(now, inT, outT);
           });
 
           // Hora límite para TARDANZA: usa el turno pendiente/activo, no el primer horario.

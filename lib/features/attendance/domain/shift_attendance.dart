@@ -47,6 +47,26 @@ bool isShiftActive(
   return !now.isBefore(inYesterday) && now.isBefore(outYesterday);
 }
 
+/// Ventana de MARCACION (igual que el servidor): permite marcar desde
+/// [checkIn - graceMinutes] hasta el fin del turno. Soporta medianoche.
+bool isShiftMarkable(
+  DateTime now,
+  String checkInTime,
+  String checkOutTime, {
+  int graceMinutes = 30,
+}) {
+  final checkIn = _timeOnDate(now, checkInTime)
+      .subtract(Duration(minutes: graceMinutes));
+  final checkOut = scheduledCheckoutForShift(now, checkInTime, checkOutTime);
+  if (!now.isBefore(checkIn) && now.isBefore(checkOut)) return true;
+
+  final yesterday = now.subtract(const Duration(days: 1));
+  final inYesterday = _timeOnDate(yesterday, checkInTime)
+      .subtract(Duration(minutes: graceMinutes));
+  final outYesterday = scheduledCheckoutForShift(yesterday, checkInTime, checkOutTime);
+  return !now.isBefore(inYesterday) && now.isBefore(outYesterday);
+}
+
 Map<String, dynamic>? selectTargetShift({
   required List<Map<String, dynamic>> schedules,
   required DateTime now,

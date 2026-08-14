@@ -104,4 +104,30 @@ void main() {
       expect(isShiftActive(DateTime(2026, 8, 13, 18), '19:00:00', '03:00:00'), isFalse);
     });
   });
+
+  group('ventana de marcacion (30 min antes)', () {
+    test('permite marcar 10 min antes del inicio', () {
+      expect(isShiftMarkable(DateTime(2026, 8, 14, 10, 10), '10:20:00', '10:30:00'), isTrue);
+    });
+
+    test('permite marcar 29 min antes del inicio', () {
+      expect(isShiftMarkable(DateTime(2026, 8, 14, 9, 51), '10:20:00', '10:30:00'), isTrue);
+    });
+
+    test('bloquea marcar 31 min antes del inicio', () {
+      expect(isShiftMarkable(DateTime(2026, 8, 14, 9, 49), '10:20:00', '10:30:00'), isFalse);
+    });
+
+    test('permite marcar dentro del turno', () {
+      expect(isShiftMarkable(DateTime(2026, 8, 14, 10, 25), '10:20:00', '10:30:00'), isTrue);
+    });
+
+    test('bloquea marcar despues del fin del turno', () {
+      expect(isShiftMarkable(DateTime(2026, 8, 14, 10, 31), '10:20:00', '10:30:00'), isFalse);
+    });
+
+    test('turno nocturno: permite marcar 20 min antes del inicio de ayer', () {
+      expect(isShiftMarkable(DateTime(2026, 8, 14, 2), '19:00:00', '03:00:00'), isTrue);
+    });
+  });
 }

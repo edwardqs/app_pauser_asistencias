@@ -166,14 +166,25 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
   }
 
   Future<void> _pickFile() async {
-    final result = await CrossFile.pick(
-      allowedExtensions: ['jpg', 'pdf', 'png', 'jpeg'],
-    );
+    try {
+      final result = await CrossFile.pick(
+        allowedExtensions: ['jpg', 'pdf', 'png', 'jpeg'],
+      );
 
-    if (result != null) {
-      setState(() {
-        _evidenceFile = result;
-      });
+      if (result != null) {
+        setState(() {
+          _evidenceFile = result;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al seleccionar archivo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -423,15 +434,16 @@ class _NewRequestFormState extends ConsumerState<_NewRequestForm> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
+                  foregroundColor: Colors.black87,
                 ),
                 icon: Icon(
                   _evidenceFile == null ? Icons.attach_file : Icons.check,
-                  color: _evidenceFile == null ? Colors.grey : Colors.green,
+                  color: _evidenceFile == null ? Colors.black54 : Colors.green,
                 ),
                 label: Text(
                   _evidenceFile?.name ?? 'Adjuntar Evidencia (Médica/Otros)',
                   style: TextStyle(
-                    color: _evidenceFile == null ? Colors.grey : Colors.green,
+                    color: _evidenceFile == null ? Colors.black87 : Colors.green,
                   ),
                 ),
               ),

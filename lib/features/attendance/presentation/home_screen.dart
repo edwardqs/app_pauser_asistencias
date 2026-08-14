@@ -109,27 +109,10 @@ class AttendanceLogic {
 
     if (targetShift == null) return;
 
-    // Nunca marcar fuera de la ventana del turno (30 min antes hasta el fin).
+    // La validacion de ventana/hora la hace el SERVIDOR con su propia hora
+    // (America/Lima). La UI no bloquea por el reloj del dispositivo.
     final checkInStr = targetShift['check_in_time'] as String?;
     final checkOutStr = targetShift['check_out_time'] as String?;
-    if (checkInStr != null && checkOutStr != null) {
-      final markable = isShiftMarkable(now, checkInStr, checkOutStr);
-      if (!markable) {
-        final targetCheckIn = DateTime(now.year, now.month, now.day,
-            int.tryParse(checkInStr.split(':')[0]) ?? 0,
-            int.tryParse(checkInStr.split(':')[1]) ?? 0);
-        final shiftEnd = scheduledCheckoutForShift(now, checkInStr, checkOutStr);
-        final message = now.isBefore(targetCheckIn)
-            ? 'Tu turno ${normalizeShift(targetShift['shift'] as String?)} inicia a las ${checkInStr.substring(0, 5)}. Puedes marcar desde 30 min antes.'
-            : 'Tu turno ${normalizeShift(targetShift['shift'] as String?)} ya termino (salida ${checkOutStr.substring(0, 5)}).';
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(message), backgroundColor: Colors.orange),
-          );
-        }
-        return;
-      }
-    }
 
     await markAttendance(
       context,
@@ -462,15 +445,24 @@ class AttendanceLogic {
     ref.read(actionLoadingNotifierProvider).value = true;
 
     try {
-      final position = await LocationService().getCurrentPosition();
+      // GPS nunca debe bloquear la marcacion: si falla, se continua con 0,0.
+      double lat = 0;
+      double lng = 0;
+      try {
+        final position = await LocationService().getCurrentPosition();
+        lat = position?.latitude ?? 0;
+        lng = position?.longitude ?? 0;
+      } catch (e) {
+        debugPrint('GPS no disponible, continuando sin ubicacion: $e');
+      }
 
       // Verificar proximidad GPS a la sede
       final proximity = await ref
           .read(attendanceRepositoryProvider)
           .checkGpsProximity(
             employeeId,
-            position?.latitude ?? 0,
-            position?.longitude ?? 0,
+            lat,
+            lng,
           );
 
       final isFar = proximity['is_within_range'] == false;
@@ -564,8 +556,8 @@ class AttendanceLogic {
             .read(attendanceRepositoryProvider)
             .checkIn(
               employeeId: employeeId,
-              lat: position?.latitude ?? 0,
-              lng: position?.longitude ?? 0,
+              lat: lat,
+              lng: lng,
               lateReason: lateReason,
               shift: shift,
             );
@@ -774,13 +766,6 @@ class HomeScreen extends ConsumerWidget {
               })
               .toList();
           final hasPendingShifts = workDaySchedules.length > 1 && pendingShifts.isNotEmpty;
-          // Solo se puede marcar si algun turno pendiente esta dentro de su
-          // ventana de marcacion (30 min antes del inicio hasta el fin).
-          final hasActiveShift = pendingShifts.any((s) {
-            final inT = s['check_in_time'] as String?;
-            final outT = s['check_out_time'] as String?;
-            return inT != null && outT != null && isShiftMarkable(now, inT, outT);
-          });
 
           // Hora límite para TARDANZA: usa el turno pendiente/activo, no el primer horario.
           final uiTargetShift = pendingShifts.isNotEmpty
@@ -1637,7 +1622,7 @@ class HomeScreen extends ConsumerWidget {
                                     valueListenable: loadingNotifier,
                                     builder: (context, isActionLoading, child) {
                                       return ElevatedButton(
-                                        onPressed: (isActionLoading || !hasActiveShift)
+                                        onPressed: (isActionLoading)
                                             ? null
                                             : () {
                                                 if (employeeId != null && pendingShifts.isNotEmpty) {

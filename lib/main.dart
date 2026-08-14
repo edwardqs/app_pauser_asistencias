@@ -27,7 +27,7 @@ Future<void> main() async {
 
   // Clear session on fresh install or version update to prevent
   // stale sessions from persisting across device installs or builds.
-  const appBuildSignature = '1.3.19+32';
+  const appBuildSignature = '1.3.20+33';
   final storedVersion = storageService.appVersion;
   if (storedVersion != appBuildSignature) {
     await storageService.clearSession();

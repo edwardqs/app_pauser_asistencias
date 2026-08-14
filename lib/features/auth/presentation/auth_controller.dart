@@ -5,6 +5,7 @@ import 'package:app_asistencias_pauser/core/services/auth_notifier.dart';
 import 'package:app_asistencias_pauser/features/attendance/presentation/home_screen.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/auth/data/auth_repository.dart';
+import 'package:app_asistencias_pauser/features/notifications/data/push_notifications_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -99,6 +100,15 @@ class AuthController extends AsyncNotifier<void> {
 
         // Notificar al AuthNotifier que el usuario se ha autenticado correctamente
         ref.read(authNotifierProvider.notifier).setAuthenticated(true);
+
+        // Registrar el dispositivo para notificaciones push (pide permiso y
+        // guarda el token FCM). En web es no-op.
+        try {
+          final pushService = PushNotificationsService(storage: storage);
+          await pushService.registerDevice();
+        } catch (_) {
+          // El registro de push nunca debe bloquear el login.
+        }
 
         state = const AsyncValue.data(null);
         return true;

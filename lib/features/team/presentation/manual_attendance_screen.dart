@@ -23,6 +23,7 @@ class _ManualAttendanceScreenState
   TimeOfDay _checkInTime = TimeOfDay.now(); // Fijar a Ahora
   TimeOfDay? _checkOutTime; // Opcional, empieza vacío
   String _recordType = 'ASISTENCIA'; // Valor inicial temporal
+  String _shift = 'UNICO';
   final TextEditingController _notesController = TextEditingController();
 
   // Gestión de Motivos
@@ -260,6 +261,7 @@ class _ManualAttendanceScreenState
             checkIn: checkIn,
             checkOut: checkOut,
             recordType: _recordType,
+            shift: _shift,
             notes: _notesController.text.isEmpty ? null : _notesController.text,
             evidenceUrl: evidenceUrl, // Pasar URL de evidencia
           );
@@ -528,6 +530,35 @@ class _ManualAttendanceScreenState
                                         color: Colors.grey.shade700,
                                       ),
                                     ),
+                                  ),
+                                  const SizedBox(height: 20),
+
+                                  const Text(
+                                    'Turno *',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  DropdownButtonFormField<String>(
+                                    value: _shift,
+                                    decoration: InputDecoration(
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      prefixIcon: const Icon(Icons.schedule),
+                                    ),
+                                    items: const [
+                                      DropdownMenuItem(value: 'UNICO', child: Text('Unico / historico')),
+                                      DropdownMenuItem(value: 'MAÑANA', child: Text('Mañana')),
+                                      DropdownMenuItem(value: 'TARDE', child: Text('Tarde')),
+                                      DropdownMenuItem(value: 'NOCHE', child: Text('Noche')),
+                                    ],
+                                    onChanged: (value) {
+                                      if (value != null) setState(() => _shift = value);
+                                    },
                                   ),
                                   const SizedBox(height: 20),
 

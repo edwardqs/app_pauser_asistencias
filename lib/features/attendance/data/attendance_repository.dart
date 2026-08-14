@@ -2,6 +2,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:app_asistencias_pauser/core/services/peru_time.dart';
+import 'package:app_asistencias_pauser/features/attendance/domain/shift_attendance.dart';
 
 final attendanceRepositoryProvider = Provider<AttendanceRepository>((ref) {
   return AttendanceRepository(Supabase.instance.client);
@@ -26,7 +28,7 @@ class AttendanceRepository {
       if (kDebugMode) print('Error en getEmployeeDayStatus RPC: $e');
       // Inicializar con valores por defecto si falla el RPC
       statusData = {
-        'date': DateTime.now().toIso8601String(),
+        'date': nowPeru().toIso8601String(),
         'attendance': null,
         'vacation': null,
         'is_on_vacation': false
@@ -53,9 +55,7 @@ class AttendanceRepository {
 
   Future<Map<String, dynamic>?> getTodayAttendance(String employeeId) async {
     // Usa RPC SECURITY DEFINER para bypassear RLS (app no usa Supabase Auth)
-    final now = DateTime.now();
-    final todayStr =
-        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final todayStr = todayPeruStr();
 
     final response = await _supabase.rpc(
       'get_employee_attendance_history',
@@ -83,9 +83,7 @@ class AttendanceRepository {
   /// Necesario para empleados con multiples turnos (MANANA + TARDE + NOCHE).
   /// Cada registro tiene un [shift] distinto — asi sabemos cuales quedan pendientes.
   Future<List<Map<String, dynamic>>> getTodayAllAttendances(String employeeId) async {
-    final now = DateTime.now();
-    final todayStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final todayStr = todayPeruStr();
     try {
       final response = await _supabase
           .from('attendance')
@@ -96,6 +94,29 @@ class AttendanceRepository {
       return List<Map<String, dynamic>>.from(response as List);
     } catch (e) {
       if (kDebugMode) print('Error en getTodayAllAttendances: $e');
+      return [];
+    }
+  }
+
+  /// Devuelve entradas abiertas de hoy y de ayer para soportar turnos nocturnos.
+  Future<List<Map<String, dynamic>>> getOpenAttendances(String employeeId) async {
+    final today = nowPeru();
+    final todayStr = peruDateStr(today);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final yesterdayStr = peruDateStr(yesterday);
+
+    try {
+      final response = await _supabase
+          .from('attendance')
+          .select('id, work_date, check_in, check_out, shift, schedule_id, record_type')
+          .eq('employee_id', employeeId)
+          .inFilter('work_date', [yesterdayStr, todayStr])
+          .eq('record_type', 'ASISTENCIA')
+          .isFilter('check_out', null)
+          .order('check_in', ascending: false);
+      return List<Map<String, dynamic>>.from(response as List);
+    } catch (e) {
+      if (kDebugMode) print('Error fetching open attendances: $e');
       return [];
     }
   }
@@ -171,7 +192,34 @@ class AttendanceRepository {
         'p_type': 'IN',
         if (lateReason != null) 'p_notes': lateReason,
         if (evidenceUrl != null) 'p_evidence_url': evidenceUrl,
-        if (shift != null) 'p_shift': shift,
+        'p_shift': shift ?? 'UNICO',
+      },
+    );
+
+    if (response is Map && response['success'] == false) {
+      throw Exception(response['message']);
+    }
+  }
+
+  Future<void> checkOut({
+    required String employeeId,
+    required double lat,
+    required double lng,
+    required String shift,
+    String? notes,
+  }) async {
+    if ((lat == 0 && lng == 0) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw Exception('No se obtuvo una ubicacion GPS valida');
+    }
+
+    final response = await _supabase.rpc(
+      'register_attendance_out',
+      params: {
+        'p_employee_id': employeeId,
+        'p_lat': lat,
+        'p_lng': lng,
+        'p_shift': normalizeShift(shift),
+        if (notes != null && notes.isNotEmpty) 'p_notes': notes,
       },
     );
 
@@ -280,10 +328,8 @@ class AttendanceRepository {
   ///   [schedule1, schedule2, ...]    → uno o más horarios válidos para hoy
   Future<List<Map<String, dynamic>>> getActiveSchedules(String employeeId) async {
     try {
-      final today = DateTime.now();
-      final todayStr =
-          "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
-      final isodow = today.weekday;
+      final todayStr = todayPeruStr();
+      final isodow = todayPeruIsodow();
 
       final response = await _supabase
           .from('employee_schedule_assignments')
@@ -314,13 +360,16 @@ class AttendanceRepository {
         return workDays.contains(isodow);
       }).toList();
 
-      // Ordenar: especiales primero, luego por shift
+      // Orden determinista: especiales primero, luego por check_in_time.
       matching.sort((a, b) {
         final aType = (a['schedule']?['schedule_type'] ?? 'REGULAR') as String;
         final bType = (b['schedule']?['schedule_type'] ?? 'REGULAR') as String;
         if (aType != 'REGULAR' && bType == 'REGULAR') return -1;
         if (aType == 'REGULAR' && bType != 'REGULAR') return 1;
-        return 0;
+
+        final aTime = (a['schedule']?['check_in_time'] as String? ?? '00:00:00');
+        final bTime = (b['schedule']?['check_in_time'] as String? ?? '00:00:00');
+        return aTime.compareTo(bTime);
       });
 
       // Hoy no está en los días laborales → retornar con is_work_day: false

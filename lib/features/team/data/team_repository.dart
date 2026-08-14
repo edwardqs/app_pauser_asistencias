@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:app_asistencias_pauser/core/services/peru_time.dart';
 
 final teamRepositoryProvider = Provider<TeamRepository>((ref) {
   return TeamRepository(Supabase.instance.client);
@@ -24,7 +25,7 @@ class TeamRepository {
       // Flutter — hacerlo sobreescribe la lógica de seguridad del RPC con un
       // filtro de UI que restringe los resultados incorrectamente.
       final rpcParams = <String, dynamic>{
-        'p_date': DateTime.now().toIso8601String().split('T')[0],
+        'p_date': todayPeruStr(),
         'p_page': 1,
         'p_limit': 1000,
         'p_employee_id': supervisorId,
@@ -113,6 +114,7 @@ class TeamRepository {
     DateTime? checkOut,
     required String recordType,
     String? subcategory, // NUEVO
+    String shift = 'UNICO',
     String? notes,
     String? evidenceUrl,
     bool isLate = false,
@@ -133,6 +135,7 @@ class TeamRepository {
           'p_evidence_url': evidenceUrl,
           'p_is_late': isLate,
           'p_location': location,
+          'p_shift': shift,
         },
       );
 

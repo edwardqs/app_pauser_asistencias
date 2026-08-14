@@ -2,15 +2,19 @@ import 'package:app_asistencias_pauser/core/router/app_router.dart';
 import 'package:app_asistencias_pauser/core/constants/supabase_constants.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/core/theme/app_theme.dart';
+import 'package:app_asistencias_pauser/features/notifications/data/push_notifications_service.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es');
+
+  await Firebase.initializeApp();
 
   // Initialize Supabase
   await Supabase.initialize(
@@ -23,7 +27,7 @@ void main() async {
 
   // Clear session on fresh install or version update to prevent
   // stale sessions from persisting across device installs or builds.
-  const appBuildSignature = '1.3.13+26';
+  const appBuildSignature = '1.3.17+30';
   final storedVersion = storageService.appVersion;
   if (storedVersion != appBuildSignature) {
     await storageService.clearSession();
@@ -32,6 +36,10 @@ void main() async {
       await Supabase.instance.client.auth.signOut();
     } catch (_) {}
   }
+
+  final pushService = PushNotificationsService(storage: storageService);
+  await pushService.init();
+  await pushService.registerDevice();
 
   runApp(
     ProviderScope(

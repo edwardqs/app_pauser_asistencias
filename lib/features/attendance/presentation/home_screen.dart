@@ -2,8 +2,10 @@
 import 'package:analog_clock/analog_clock.dart';
 import 'package:app_asistencias_pauser/core/platform/file_helper.dart';
 import 'package:app_asistencias_pauser/core/platform/location_helper.dart';
+import 'package:app_asistencias_pauser/core/services/peru_time.dart';
 import 'package:app_asistencias_pauser/core/services/storage_service.dart';
 import 'package:app_asistencias_pauser/features/attendance/data/attendance_repository.dart';
+import 'package:app_asistencias_pauser/features/attendance/domain/shift_attendance.dart';
 import 'package:app_asistencias_pauser/features/requests/data/requests_repository.dart';
 import 'package:app_asistencias_pauser/features/requests/presentation/notifications_screen.dart';
 import 'package:flutter/material.dart';
@@ -50,6 +52,13 @@ final todayAllAttendancesProvider = FutureProvider.family
       return ref.read(attendanceRepositoryProvider).getTodayAllAttendances(employeeId);
     });
 
+// Provider de entradas abiertas de hoy y ayer (turnos nocturnos).
+final openAttendancesProvider = FutureProvider.family
+    .autoDispose<List<Map<String, dynamic>>, String?>((ref, employeeId) async {
+      if (employeeId == null) return [];
+      return ref.read(attendanceRepositoryProvider).getOpenAttendances(employeeId);
+    });
+
 
 // 2. Provider para el estado de carga de la acción (WRITE State)
 final actionLoadingNotifierProvider = Provider.autoDispose<ValueNotifier<bool>>(
@@ -78,8 +87,9 @@ class AttendanceLogic {
 
     // Filtrar turnos ya marcados (por si pendingShifts no se actualizó a tiempo)
     final unmarked = schedules.where((s) {
-      final shift = s['shift'] as String?;
-      return shift == null || !alreadyMarkedShifts.contains(shift);
+      return !alreadyMarkedShifts.contains(
+        normalizeShift(s['shift'] as String?),
+      );
     }).toList();
 
     if (unmarked.isEmpty) {
@@ -106,41 +116,12 @@ class AttendanceLogic {
       return;
     }
 
-    // Múltiples horarios - auto-detectar el turno a marcar según la hora actual
-    final now = DateTime.now().toUtc().add(const Duration(hours: -5));
-    Map<String, dynamic>? targetShift;
-    Map<String, dynamic>? nextShift;
-
-    for (final s in schedules) {
-      final checkInStr = s['check_in_time'] as String?;
-      final checkOutStr = s['check_out_time'] as String?;
-      if (checkInStr == null || checkOutStr == null) continue;
-
-      final inParts = checkInStr.split(':');
-      final outParts = checkOutStr.split(':');
-      final checkIn = DateTime(now.year, now.month, now.day,
-          int.tryParse(inParts[0]) ?? 0, int.tryParse(inParts[1]) ?? 0);
-      var checkOut = DateTime(now.year, now.month, now.day,
-          int.tryParse(outParts[0]) ?? 0, int.tryParse(outParts[1]) ?? 0);
-      // Turno nocturno (cruza medianoche): check_out pertenece al día siguiente
-      if ((int.tryParse(outParts[0]) ?? 0) < (int.tryParse(inParts[0]) ?? 0)) {
-        checkOut = checkOut.add(const Duration(hours: 24));
-      }
-
-      // Turno activo (dentro de su ventana de tiempo)
-      if (!now.isBefore(checkIn) && now.isBefore(checkOut)) {
-        targetShift = s;
-        break;
-      }
-
-      // Siguiente turno próximo (aún no comienza)
-      if (nextShift == null && now.isBefore(checkIn)) {
-        nextShift = s;
-      }
-    }
-
-    // Prioridad: turno activo > próximo turno > último como fallback
-    targetShift ??= nextShift ?? schedules.last;
+    // Múltiples horarios - elegir el turno activo o el siguiente pendiente.
+    final now = nowPeru();
+    final targetShift = selectTargetShift(
+      schedules: unmarked,
+      now: now,
+    );
 
     if (targetShift == null) return;
 
@@ -153,6 +134,99 @@ class AttendanceLogic {
       toleranceMinutes: (targetShift['tolerance_minutes'] as num?)?.toInt() ?? 0,
       shift: targetShift['shift'] as String?,
     );
+  }
+
+  Future<void> markCheckout(
+    BuildContext context,
+    String employeeId,
+    String shift,
+  ) async {
+    final normalizedShift = normalizeShift(shift);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar salida'),
+        content: Text('¿Deseas registrar tu salida del turno $normalizedShift ahora?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Registrar salida'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    ref.read(actionLoadingNotifierProvider).value = true;
+
+    try {
+      final position = await LocationService().getCurrentPosition();
+      if (position == null) {
+        throw Exception('No se pudo obtener la ubicacion GPS');
+      }
+
+      final proximity = await ref
+          .read(attendanceRepositoryProvider)
+          .checkGpsProximity(employeeId, position.latitude, position.longitude);
+      final isFar = proximity['is_within_range'] == false;
+      final distanceMeters = (proximity['distance_meters'] as num?)?.round() ?? 0;
+
+      if (isFar && context.mounted) {
+        final continueAnyway = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Salida fuera de rango'),
+            content: Text(
+              'Estas a $distanceMeters metros de la sede. La salida guardara tu GPS y notificara a tu supervisor. ¿Continuar?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Continuar'),
+              ),
+            ],
+          ),
+        );
+        if (continueAnyway != true) return;
+      }
+
+      await ref.read(attendanceRepositoryProvider).checkOut(
+            employeeId: employeeId,
+            lat: position.latitude,
+            lng: position.longitude,
+            shift: normalizedShift,
+            notes: 'Salida marcada desde la app',
+          );
+
+      ref.invalidate(employeeStatusProvider(employeeId));
+      ref.invalidate(todayAllAttendancesProvider(employeeId));
+      ref.invalidate(openAttendancesProvider(employeeId));
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Salida registrada exitosamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error registrando salida: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      ref.read(actionLoadingNotifierProvider).value = false;
+    }
   }
 
   Future<void> reportAbsence(BuildContext context, String employeeId) async {
@@ -282,7 +356,7 @@ class AttendanceLogic {
     int toleranceMinutes = 0,
     String? shift,
   }) async {
-    final now = DateTime.now().toUtc().add(const Duration(hours: -5));
+    final now = nowPeru();
     final horaActual = DateFormat('hh:mm a').format(now);
 
     // Recalcular tardanza con el horario REAL + tolerancia
@@ -452,8 +526,11 @@ class AttendanceLogic {
       final allTodayAttendances = await ref
           .read(attendanceRepositoryProvider)
           .getTodayAllAttendances(employeeId);
-      final alreadyCheckedInThisShift = allTodayAttendances
-          .any((a) => a['shift'] == shift && a['check_out'] == null);
+      final normalizedShift = shift ?? 'UNICO';
+      final alreadyCheckedInThisShift = hasAttendanceForShift(
+        allTodayAttendances,
+        normalizedShift,
+      );
 
       if (alreadyCheckedInThisShift) {
         if (context.mounted) {
@@ -511,6 +588,73 @@ class AttendanceLogic {
   }
 }
 
+class _OpenAttendanceCard extends StatelessWidget {
+  final Map<String, dynamic> attendance;
+  final VoidCallback onCheckout;
+
+  const _OpenAttendanceCard({
+    required this.attendance,
+    required this.onCheckout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final shift = normalizeShift(attendance['shift'] as String?);
+    final checkIn = attendance['check_in'] as String?;
+    final workDate = attendance['work_date'] as String?;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.pending_actions, color: Colors.amber.shade800),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Turno $shift abierto',
+                  style: TextStyle(
+                    color: Colors.amber.shade900,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Entrada: ${checkIn == null ? '--:--' : DateFormat('HH:mm').format(DateTime.parse(checkIn).toLocal())}',
+                  style: TextStyle(color: Colors.amber.shade800, fontSize: 12),
+                ),
+                if (workDate != null)
+                  Text(
+                    'Fecha de inicio: $workDate',
+                    style: TextStyle(color: Colors.amber.shade800, fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: onCheckout,
+            icon: const Icon(Icons.logout, size: 16),
+            label: const Text('Salir'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber.shade800,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -537,6 +681,7 @@ class HomeScreen extends ConsumerWidget {
     final scheduleData = ref.watch(activeScheduleProvider(employeeId)).valueOrNull;
     final allSchedules = ref.watch(activeSchedulesProvider(employeeId)).valueOrNull ?? [];
     final todayAllAttendances = ref.watch(todayAllAttendancesProvider(employeeId)).valueOrNull ?? [];
+    final openAttendances = ref.watch(openAttendancesProvider(employeeId)).valueOrNull ?? [];
     final loadingNotifier = ref.watch(actionLoadingNotifierProvider);
 
     final positionTitle = storage.position ?? 'Empleado';
@@ -552,11 +697,10 @@ class HomeScreen extends ConsumerWidget {
           final vacation = statusData?['vacation'] as Map<String, dynamic>?;
           final isOnVacation = statusData?['is_on_vacation'] as bool? ?? false;
 
-          // Hora Perú (UTC-5) — coincide con el backend
-          final now = DateTime.now().toUtc().add(const Duration(hours: -5));
+          // Hora Perú — coincide con el backend
+          final now = nowPeru();
           // Usamos la misma cadena de fecha que se usa en la query del repositorio
-          final todayStr =
-              "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+          final todayStr = peruDateStr(now);
 
           // Validar si el registro recuperado es de hoy
           // La query ya filtra por fecha exacta, así que si attendance != null, ES de hoy.
@@ -605,9 +749,33 @@ class HomeScreen extends ConsumerWidget {
           final String nextWorkDay =
               scheduleData?['next_work_day'] as String? ?? '';
 
-          // Hora límite para TARDANZA: usa horario asignado o default 07:00 + tolerancia
-          final checkInParts = (scheduleData?['check_in_time'] as String? ?? '07:00:00').split(':');
-          final toleranceMins = (scheduleData?['tolerance_minutes'] as num?)?.toInt() ?? 0;
+          // === MULTI-TURNO: calcular turnos pendientes de marcar ===
+          final workDaySchedules = allSchedules.where((s) => s['is_work_day'] == true).toList();
+          final markedShifts = todayAllAttendances
+              .map((a) => normalizeShift(a['shift'] as String?))
+              .toSet();
+          final pendingShifts = workDaySchedules
+              .where((s) {
+                if (markedShifts.contains(normalizeShift(s['shift'] as String?))) return false;
+                final checkOutStr = s['check_out_time'] as String? ?? '18:00:00';
+                final checkInStr = s['check_in_time'] as String? ?? '07:00:00';
+                final shiftEnd = scheduledCheckoutForShift(
+                  now,
+                  checkInStr,
+                  checkOutStr,
+                );
+                return now.isBefore(shiftEnd);
+              })
+              .toList();
+          final hasPendingShifts = workDaySchedules.length > 1 && pendingShifts.isNotEmpty;
+
+          // Hora límite para TARDANZA: usa el turno pendiente/activo, no el primer horario.
+          final uiTargetShift = pendingShifts.isNotEmpty
+              ? selectTargetShift(schedules: pendingShifts, now: now)
+              : scheduleData;
+          final checkInParts =
+              ((uiTargetShift?['check_in_time'] as String?) ?? '07:00:00').split(':');
+          final toleranceMins = ((uiTargetShift?['tolerance_minutes'] as num?)?.toInt()) ?? 0;
           final tardanzaLimit = DateTime(now.year, now.month, now.day,
               int.tryParse(checkInParts[0]) ?? 7,
               int.tryParse(checkInParts[1]) ?? 0).add(Duration(minutes: toleranceMins));
@@ -633,45 +801,6 @@ class HomeScreen extends ConsumerWidget {
                       'FALTA INJUSTIFICADA');
 
           final isFaltaInjustificada = isMarkedFalta;
-
-          // === MULTI-TURNO: calcular turnos pendientes de marcar ===
-          final workDaySchedules = allSchedules.where((s) => s['is_work_day'] == true).toList();
-          final markedShifts = todayAllAttendances.map((a) => a['shift'] as String?).toSet();
-          final pendingShifts = workDaySchedules
-              .where((s) {
-                if (markedShifts.contains(s['shift'] as String?)) return false;
-                final checkOutStr = s['check_out_time'] as String? ?? '18:00:00';
-                final checkInStr = s['check_in_time'] as String? ?? '07:00:00';
-                final outParts = checkOutStr.split(':');
-                final inParts = checkInStr.split(':');
-                var shiftEnd = DateTime(now.year, now.month, now.day,
-                    int.tryParse(outParts[0]) ?? 18,
-                    int.tryParse(outParts[1]) ?? 0);
-                // Turno nocturno (cruza medianoche): shiftEnd al día siguiente
-                if ((int.tryParse(outParts[0]) ?? 0) < (int.tryParse(inParts[0]) ?? 0)) {
-                  shiftEnd = shiftEnd.add(const Duration(hours: 24));
-                }
-                return now.isBefore(shiftEnd);
-              })
-              .toList();
-          final hasPendingShifts = workDaySchedules.length > 1 && pendingShifts.isNotEmpty;
-
-          // ¿Hay algún turno pendiente dentro de su ventana activa?
-          final hasActiveShift = pendingShifts.any((s) {
-            final checkInStr = s['check_in_time'] as String?;
-            final checkOutStr = s['check_out_time'] as String?;
-            if (checkInStr == null || checkOutStr == null) return false;
-            final inParts = checkInStr.split(':');
-            final outParts = checkOutStr.split(':');
-            final checkIn = DateTime(now.year, now.month, now.day,
-                int.tryParse(inParts[0]) ?? 0, int.tryParse(inParts[1]) ?? 0);
-            var checkOut = DateTime(now.year, now.month, now.day,
-                int.tryParse(outParts[0]) ?? 0, int.tryParse(outParts[1]) ?? 0);
-            if ((int.tryParse(outParts[0]) ?? 0) < (int.tryParse(inParts[0]) ?? 0)) {
-              checkOut = checkOut.add(const Duration(hours: 24));
-            }
-            return !now.isBefore(checkIn) && now.isBefore(checkOut);
-          });
 
           // Clave unica del estado para AnimatedSwitcher (fade de 300ms)
           final stateKey = isOnVacation ? 'vacation'
@@ -988,6 +1117,34 @@ class HomeScreen extends ConsumerWidget {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
+                              if (openAttendances.isNotEmpty) ...[
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Turnos abiertos',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade700,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ...openAttendances.map(
+                                  (attendance) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: _OpenAttendanceCard(
+                                      attendance: attendance,
+                                      onCheckout: () => AttendanceLogic(ref).markCheckout(
+                                        context,
+                                        employeeId ?? '',
+                                        normalizeShift(attendance['shift'] as String?),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
                               AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 300),
                                 transitionBuilder: (child, anim) =>

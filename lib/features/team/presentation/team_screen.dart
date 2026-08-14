@@ -229,7 +229,9 @@ class TeamScreen extends ConsumerWidget {
                               return isPuntual;
                             case 'tardanzas':
                               return isTardanza;
-                            case 'inasistencias':
+                            case 'pendientes':
+                              return !hasCheckIn && !isAbsent;
+                            case 'ausentes':
                               return isAbsent;
                             default:
                               return true;
@@ -332,8 +334,14 @@ class TeamScreen extends ConsumerWidget {
                                   ),
                                   const SizedBox(width: 8),
                                   _FilterChip(
-                                    label: 'Inasistencias',
-                                    value: 'inasistencias',
+                                    label: 'Pendientes',
+                                    value: 'pendientes',
+                                    groupValue: currentFilter,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _FilterChip(
+                                    label: 'Ausentes',
+                                    value: 'ausentes',
                                     groupValue: currentFilter,
                                   ),
                                 ],
@@ -704,6 +712,7 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
   String _selectedType = 'IN';
+  String _selectedShift = 'UNICO';
   final _notesController = TextEditingController();
   bool _isLoading = false;
   CrossFile? _evidenceFile;
@@ -846,6 +855,24 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+
+            DropdownButtonFormField<String>(
+              value: _selectedShift,
+              decoration: const InputDecoration(
+                labelText: 'Turno',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'UNICO', child: Text('Unico / historico')),
+                DropdownMenuItem(value: 'MAÑANA', child: Text('Mañana')),
+                DropdownMenuItem(value: 'TARDE', child: Text('Tarde')),
+                DropdownMenuItem(value: 'NOCHE', child: Text('Noche')),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => _selectedShift = value);
+              },
             ),
             const SizedBox(height: 16),
 
@@ -1102,6 +1129,7 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
                 ? _selectedType          // motivo va en subcategory/absence_reason
                 : _selectedSubcategory,
             notes: _notesController.text,
+            shift: _selectedShift,
             evidenceUrl: evidenceUrl,
             // isLate: _isLate, // Ya no se pasa, lo calcula el backend o es parte del recordType
             // location: locationData, // RPC register_manual_attendance no recibe location aún, pero lo dejamos preparado
@@ -1121,7 +1149,7 @@ class _ManualRegisterSheetState extends ConsumerState<_ManualRegisterSheet> {
         if (e.toString().contains('duplicate key') ||
             e.toString().contains('already exists')) {
           errorMessage =
-              'Ya existe un registro para este empleado en esta fecha.';
+              'Ya existe un registro para este empleado en este turno y fecha.';
         } else if (e.toString().contains('Exception:')) {
           final msg = e.toString().replaceAll('Exception:', '').trim();
           // Solo mostrar mensaje si es legible (no contiene detalles técnicos)

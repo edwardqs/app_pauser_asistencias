@@ -43,3 +43,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Build output for web deploy
+/Deploy/web/
+/Deploy/.env
+
+# Firebase config (secrets, never commit)
+/android/app/google-services.json
+/FIREBASE/
+/ios/Runner/GoogleService-Info.plist
+
+# Supabase local secrets (never commit)
+/supabase/functions/.env
+/supabase/.env
